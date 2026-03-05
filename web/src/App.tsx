@@ -94,6 +94,7 @@ interface ImportArticleRow {
   date_raw?: string;
   date_iso?: string;
   keywords?: string[];
+  tags?: string[] | string;
 }
 
 const STATUS_LABEL: Record<LinkStatus, string> = {
@@ -804,9 +805,16 @@ export default function App() {
           row.date_iso ? `날짜: ${row.date_iso}` : row.date_raw ? `날짜: ${row.date_raw}` : "",
           row.notes ? `\n${row.notes}` : ""
         ].filter(Boolean);
-        const keywords = Array.isArray(row.keywords)
+        const importKeywords = Array.isArray(row.keywords)
           ? row.keywords.filter((item) => typeof item === "string" && item.trim().length > 0).slice(0, 8)
           : [];
+        const importTagsRaw =
+          Array.isArray(row.tags)
+            ? row.tags.filter((item) => typeof item === "string")
+            : typeof row.tags === "string"
+              ? row.tags.split(",")
+              : [];
+        const importTags = normalizeTags([...importKeywords, ...importTagsRaw].join(", "));
 
         const { data, error }: { data: any; error: any } = await supabase
           .from("links")
@@ -818,7 +826,7 @@ export default function App() {
               note: noteParts.join("\n"),
               status: "unread",
               category: null,
-              keywords
+              keywords: []
             }
           ])
           .select(
@@ -831,8 +839,8 @@ export default function App() {
           continue;
         }
 
-        if (keywords.length > 0) {
-          await syncLinkTags(data.id, keywords.join(", "));
+        if (importTags.length > 0) {
+          await syncLinkTags(data.id, importTags.join(", "));
         }
 
         inserted += 1;
