@@ -86,6 +86,16 @@ interface LinkDraft {
   collectionId: string;
 }
 
+interface ImportArticleRow {
+  url?: string;
+  title?: string;
+  notes?: string;
+  press_raw?: string;
+  date_raw?: string;
+  date_iso?: string;
+  keywords?: string[];
+}
+
 const STATUS_LABEL: Record<LinkStatus, string> = {
   unread: "읽기전",
   reading: "읽음",
@@ -173,6 +183,15 @@ function parseRating(raw: string): number | null {
   return parsed;
 }
 
+function buildImportFallbackUrl(row: ImportArticleRow, index: number): string {
+  const queryParts = [row.title, row.press_raw, row.date_iso, row.date_raw].filter((value) => typeof value === "string" && value.trim().length > 0);
+  const query = queryParts.join(" ").trim();
+  if (!query) {
+    return `https://www.google.com/search?q=linklens+import+${index + 1}`;
+  }
+  return `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+}
+
 function mapLinkRow(row: any): LinkItem {
   const tags = Array.isArray(row?.link_tags)
     ? row.link_tags
@@ -256,6 +275,7 @@ export default function App() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [manualTitleEdited, setManualTitleEdited] = useState(false);
+  const [importingFile, setImportingFile] = useState(false);
 
   const [collectionName, setCollectionName] = useState("");
   const [collectionColor, setCollectionColor] = useState("#5f7df3");
@@ -268,6 +288,7 @@ export default function App() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const newUrlInputRef = useRef<HTMLInputElement | null>(null);
+  const importFileInputRef = useRef<HTMLInputElement | null>(null);
   const authInitDoneRef = useRef(false);
 
   const selectedLink = useMemo(() => links.find((item) => item.id === selectedLinkId) || null, [links, selectedLinkId]);
@@ -726,6 +747,119 @@ export default function App() {
     setCollectionColor("#5f7df3");
     setEditingCollectionId(null);
     await loadCollections();
+  }
+
+  async function handleImportArticlesFile(file: File): Promise<void> {
+    if (!session) {
+      return;
+    }
+
+    setImportingFile(true);
+    setErrorMessage(null);
+
+    try {
+      const text = await file.text();
+      const trimmed = text.trim();
+      if (!trimmed) {
+        setToast({ kind: "err", message: "비어 있는 파일입니다." });
+        return;
+      }
+
+      let rows: ImportArticleRow[] = [];
+      if (trimmed.startsWith("[")) {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) {
+          rows = parsed as ImportArticleRow[];
+        }
+      } else {
+        rows = [];
+        for (const line of trimmed.split(/\r?\n/)) {
+          const rawLine = line.trim();
+          if (!rawLine) {
+            continue;
+          }
+          try {
+            rows.push(JSON.parse(rawLine) as ImportArticleRow);
+          } catch {
+            // skip malformed line
+          }
+        }
+      }
+
+      if (rows.length === 0) {
+        setToast({ kind: "err", message: "가져올 데이터가 없습니다." });
+        return;
+      }
+
+      let inserted = 0;
+      let failed = 0;
+
+      for (let i = 0; i < rows.length; i += 1) {
+        const row = rows[i];
+        const rawUrl = (row.url || "").trim();
+        const resolvedUrl = parseUrlValid(rawUrl) ? rawUrl : buildImportFallbackUrl(row, i);
+        const resolvedTitle = (row.title || "").trim() || `가져온 기사 #${i + 1}`;
+        const noteParts = [
+          row.press_raw ? `출처: ${row.press_raw}` : "",
+          row.date_iso ? `날짜: ${row.date_iso}` : row.date_raw ? `날짜: ${row.date_raw}` : "",
+          row.notes ? `\n${row.notes}` : ""
+        ].filter(Boolean);
+        const keywords = Array.isArray(row.keywords)
+          ? row.keywords.filter((item) => typeof item === "string" && item.trim().length > 0).slice(0, 8)
+          : [];
+
+        const { data, error }: { data: any; error: any } = await supabase
+          .from("links")
+          .insert([
+            {
+              user_id: session.user.id,
+              url: resolvedUrl,
+              title: resolvedTitle,
+              note: noteParts.join("\n"),
+              status: "unread",
+              category: null,
+              keywords
+            }
+          ])
+          .select(
+            "id, url, title, note, status, rating, is_favorite, category, summary, keywords, collection_id, ai_state, ai_error, created_at, deleted_at"
+          )
+          .single();
+
+        if (error || !data?.id) {
+          failed += 1;
+          continue;
+        }
+
+        if (keywords.length > 0) {
+          await syncLinkTags(data.id, keywords.join(", "));
+        }
+
+        inserted += 1;
+        if (parseUrlValid(rawUrl)) {
+          void runAiEnrichmentInBackground({
+            id: data.id,
+            url: data.url,
+            title: data.title
+          });
+        }
+      }
+
+      await loadLinks();
+      setToast({
+        kind: failed > 0 ? "info" : "ok",
+        message: `가져오기 완료: 성공 ${inserted}건${failed > 0 ? `, 실패 ${failed}건` : ""}`
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setErrorMessage(`파일 가져오기 실패: ${message}`);
+      setToast({ kind: "err", message: "파일 형식을 확인해 주세요. (JSONL/JSON)" });
+    } finally {
+      setImportingFile(false);
+      if (importFileInputRef.current) {
+        importFileInputRef.current.value = "";
+      }
+    }
   }
 
   function startCollectionEdit(collection: Collection): void {
@@ -1336,6 +1470,18 @@ export default function App() {
           <h2 className="page-title">{currentViewTitle}</h2>
           <div className="topbar-right">
             <input
+              ref={importFileInputRef}
+              type="file"
+              accept=".jsonl,.json,.txt"
+              style={{ display: "none" }}
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) {
+                  void handleImportArticlesFile(file);
+                }
+              }}
+            />
+            <input
               ref={searchInputRef}
               className="search-input"
               placeholder="검색어 입력"
@@ -1361,6 +1507,14 @@ export default function App() {
             </button>
             <button type="button" className="ghost" onClick={() => void loadLinks()}>
               새로고침
+            </button>
+            <button
+              type="button"
+              className="ghost"
+              onClick={() => importFileInputRef.current?.click()}
+              disabled={importingFile}
+            >
+              {importingFile ? "가져오는 중..." : "파일 가져오기"}
             </button>
             <button
               type="button"
