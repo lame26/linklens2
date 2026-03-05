@@ -702,7 +702,8 @@ button.ghost-danger {
 
 .links-panel.card {
   display: grid;
-  gap: 10px;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
 }
 
 .links-panel.list {
@@ -751,6 +752,11 @@ button.ghost-danger {
   border-right: 0;
   border-left: 2px solid var(--border2);
   border-top: 0;
+  padding-left: 12px;
+}
+
+.links-panel.list .link-card::before {
+  display: none;
 }
 
 .link-card header {
@@ -759,9 +765,29 @@ button.ghost-danger {
   gap: 10px;
 }
 
+.tile-head {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.tile-icon {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  font-size: 20px;
+  font-weight: 700;
+  color: #c4b5fd;
+  background: linear-gradient(160deg, rgba(139, 92, 246, 0.22), rgba(139, 92, 246, 0.1));
+  border: 1px solid rgba(139, 92, 246, 0.34);
+}
+
 .link-title-wrap h3 {
   margin: 0 0 4px;
-  font-size: 17px;
+  font-size: 15px;
   line-height: 1.35;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -876,7 +902,7 @@ button.ghost-danger {
 .summary {
   margin: 0;
   color: var(--text2);
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1.55;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -889,6 +915,47 @@ button.ghost-danger {
   gap: 6px;
   flex-wrap: wrap;
   margin-top: 2px;
+}
+
+.links-panel.card .link-card {
+  min-height: 238px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  padding: 14px;
+  border-radius: 12px;
+}
+
+.links-panel.card .link-card::before {
+  display: none;
+}
+
+.links-panel.card .link-card header {
+  display: block;
+}
+
+.links-panel.card .pill-row {
+  margin-top: 10px;
+  justify-content: flex-start;
+}
+
+.links-panel.card .link-meta {
+  margin-top: 8px;
+}
+
+.links-panel.card .summary {
+  margin-top: 8px;
+  min-height: 36px;
+}
+
+.links-panel.card .keywords {
+  margin-top: 6px;
+}
+
+.links-panel.card .card-actions {
+  margin-top: auto;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
 }
 
 .action-btn {

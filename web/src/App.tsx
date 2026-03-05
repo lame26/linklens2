@@ -1248,7 +1248,11 @@ export default function App() {
                     }}
                   >
                     <header>
-                      <div className="link-title-wrap">
+                      <div className="tile-head">
+                        <div className="tile-icon" aria-hidden>
+                          {getUrlHostLabel(link.url).slice(0, 1).toUpperCase()}
+                        </div>
+                        <div className="link-title-wrap">
                         <div className="link-title-head">
                           {link.status === "unread" && <span className="unread-dot" aria-label="미읽음" />}
                           <h3>{link.title || link.url}</h3>
@@ -1263,6 +1267,7 @@ export default function App() {
                         >
                           {getUrlHostLabel(link.url)}
                         </a>
+                      </div>
                       </div>
                       <div className="pill-row">
                         <span className={`pill status-pill status-${link.status}`}>{STATUS_LABEL[link.status]}</span>
