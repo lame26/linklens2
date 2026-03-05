@@ -220,6 +220,7 @@ export default function App() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [collectionFilter, setCollectionFilter] = useState<string>("all");
+  const [favoriteOnly, setFavoriteOnly] = useState(false);
   const [sortMode, setSortMode] = useState<SortMode>("newest");
   const [viewMode, setViewMode] = useState<ViewMode>("card");
   const [showTrash, setShowTrash] = useState(false);
@@ -352,6 +353,10 @@ export default function App() {
       query = query.eq("collection_id", collectionFilter);
     }
 
+    if (favoriteOnly) {
+      query = query.eq("is_favorite", true);
+    }
+
     const searchValue = search.trim();
     if (searchValue) {
       query = query.or(`url.ilike.%${searchValue}%,title.ilike.%${searchValue}%,note.ilike.%${searchValue}%`);
@@ -381,7 +386,7 @@ export default function App() {
 
     const mapped = (data || []).map(mapLinkRow);
     setLinks(mapped);
-  }, [session, showTrash, statusFilter, collectionFilter, search, sortMode]);
+  }, [session, showTrash, statusFilter, collectionFilter, favoriteOnly, search, sortMode]);
 
   const requestAiAnalysis = useCallback(
     async (linkId: string): Promise<void> => {
@@ -914,10 +919,11 @@ export default function App() {
             <p className="nav-group-label">라이브러리</p>
             <button
               type="button"
-              className={`nav-btn ${!showTrash && statusFilter === "all" ? "active" : ""}`}
+              className={`nav-btn ${!showTrash && statusFilter === "all" && !favoriteOnly ? "active" : ""}`}
               onClick={() => {
                 setShowTrash(false);
                 setStatusFilter("all");
+                setFavoriteOnly(false);
               }}
             >
               전체 기사 <span className="nav-count">{headerStats.total}</span>
@@ -928,6 +934,7 @@ export default function App() {
               onClick={() => {
                 setShowTrash(false);
                 setStatusFilter("unread");
+                setFavoriteOnly(false);
               }}
             >
               읽기전 <span className="nav-count">{headerStats.unread}</span>
@@ -938,9 +945,21 @@ export default function App() {
               onClick={() => {
                 setShowTrash(false);
                 setStatusFilter("reading");
+                setFavoriteOnly(false);
               }}
             >
-              읽음 <span className="nav-count">{readingCount}</span>
+              나중에 읽기 <span className="nav-count">{readingCount}</span>
+            </button>
+            <button
+              type="button"
+              className={`nav-btn ${!showTrash && favoriteOnly ? "active" : ""}`}
+              onClick={() => {
+                setShowTrash(false);
+                setStatusFilter("all");
+                setFavoriteOnly(true);
+              }}
+            >
+              즐겨찾기 <span className="nav-count">{headerStats.favorite}</span>
             </button>
             <button
               type="button"
@@ -948,11 +967,19 @@ export default function App() {
               onClick={() => {
                 setShowTrash(false);
                 setStatusFilter("done");
+                setFavoriteOnly(false);
               }}
             >
               완료 <span className="nav-count">{doneCount}</span>
             </button>
-            <button type="button" className={`nav-btn ${showTrash ? "active" : ""}`} onClick={() => setShowTrash((prev) => !prev)}>
+            <button
+              type="button"
+              className={`nav-btn ${showTrash ? "active" : ""}`}
+              onClick={() => {
+                setFavoriteOnly(false);
+                setShowTrash((prev) => !prev);
+              }}
+            >
               휴지통 <span className="nav-count">{showTrash ? links.length : 0}</span>
             </button>
           </div>
@@ -1007,7 +1034,7 @@ export default function App() {
 
       <main className="main">
         <header className="topbar">
-          <h2 className="page-title">{showTrash ? "휴지통" : "전체 기사"}</h2>
+          <h2 className="page-title">{showTrash ? "휴지통" : favoriteOnly ? "즐겨찾기" : "전체 기사"}</h2>
           <div className="topbar-right">
             <input
               ref={searchInputRef}
@@ -1024,6 +1051,7 @@ export default function App() {
                 setStatusFilter("all");
                 setCollectionFilter("all");
                 setSortMode("newest");
+                setFavoriteOnly(false);
               }}
             >
               초기화
