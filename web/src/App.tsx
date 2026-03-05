@@ -244,9 +244,11 @@ export default function App() {
 
   const [collectionName, setCollectionName] = useState("");
   const [collectionColor, setCollectionColor] = useState("#5f7df3");
+  const [editingCollectionId, setEditingCollectionId] = useState<string | null>(null);
   const [selectedLinkId, setSelectedLinkId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ kind: "info" | "ok" | "err"; message: string } | null>(null);
   const [authNotice, setAuthNotice] = useState<string | null>(null);
+  const [showUserMenu, setShowUserMenu] = useState(false);
 
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
@@ -341,6 +343,19 @@ export default function App() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [selectedLink, isAddModalOpen]);
+
+  useEffect(() => {
+    if (!showUserMenu) {
+      return;
+    }
+
+    function closeMenu(): void {
+      setShowUserMenu(false);
+    }
+
+    window.addEventListener("click", closeMenu);
+    return () => window.removeEventListener("click", closeMenu);
+  }, [showUserMenu]);
 
   const loadCollections = useCallback(async () => {
     if (!session) {
@@ -650,6 +665,7 @@ export default function App() {
     setLogoutLoading(true);
     setErrorMessage(null);
     setSelectedLinkId(null);
+    setShowUserMenu(false);
     setLinks([]);
     setCollections([]);
     setDrafts({});
@@ -672,21 +688,60 @@ export default function App() {
       return;
     }
 
-    const { error } = await supabase.from("collections").insert([
-      {
-        user_id: session.user.id,
-        name: collectionName.trim(),
-        color: collectionColor
-      }
-    ]);
+    const payload = {
+      name: collectionName.trim(),
+      color: collectionColor
+    };
+
+    const { error } = editingCollectionId
+      ? await supabase.from("collections").update(payload).eq("id", editingCollectionId)
+      : await supabase.from("collections").insert([
+          {
+            user_id: session.user.id,
+            ...payload
+          }
+        ]);
 
     if (error) {
-      setErrorMessage(`컬렉션 생성 실패: ${error.message}`);
+      setErrorMessage(`컬렉션 ${editingCollectionId ? "수정" : "생성"} 실패: ${error.message}`);
       return;
     }
 
     setCollectionName("");
+    setCollectionColor("#5f7df3");
+    setEditingCollectionId(null);
     await loadCollections();
+  }
+
+  function startCollectionEdit(collection: Collection): void {
+    setEditingCollectionId(collection.id);
+    setCollectionName(collection.name);
+    setCollectionColor(collection.color || "#5f7df3");
+  }
+
+  async function handleDeleteCollection(collectionId: string): Promise<void> {
+    const { error: unlinkError } = await supabase.from("links").update({ collection_id: null }).eq("collection_id", collectionId);
+    if (unlinkError) {
+      setErrorMessage(`컬렉션 연결 해제 실패: ${unlinkError.message}`);
+      return;
+    }
+
+    const { error } = await supabase.from("collections").delete().eq("id", collectionId);
+    if (error) {
+      setErrorMessage(`컬렉션 삭제 실패: ${error.message}`);
+      return;
+    }
+
+    if (collectionFilter === collectionId) {
+      setCollectionFilter("all");
+    }
+    if (editingCollectionId === collectionId) {
+      setEditingCollectionId(null);
+      setCollectionName("");
+      setCollectionColor("#5f7df3");
+    }
+    await loadCollections();
+    await loadLinks();
   }
 
   async function handleCreateLink(event: React.FormEvent) {
@@ -954,6 +1009,39 @@ export default function App() {
 
   const readingCount = useMemo(() => links.filter((item) => item.status === "reading").length, [links]);
   const doneCount = useMemo(() => links.filter((item) => item.status === "done").length, [links]);
+  const userLabel = useMemo(() => {
+    const emailValue = session?.user?.email || "User";
+    return emailValue.split("@")[0] || emailValue;
+  }, [session]);
+  const userInitial = userLabel.slice(0, 1).toUpperCase();
+  const currentCollectionName = useMemo(
+    () => collections.find((item) => item.id === collectionFilter)?.name || null,
+    [collections, collectionFilter]
+  );
+  const currentViewTitle = useMemo(() => {
+    if (showTrash) {
+      return "휴지통";
+    }
+    if (favoriteOnly) {
+      return "즐겨찾기";
+    }
+    if (categoryFilter !== "all") {
+      return categoryFilter;
+    }
+    if (currentCollectionName) {
+      return currentCollectionName;
+    }
+    if (statusFilter === "unread") {
+      return "미읽음";
+    }
+    if (statusFilter === "reading") {
+      return "나중에 읽기";
+    }
+    if (statusFilter === "done") {
+      return "완료";
+    }
+    return "전체 기사";
+  }, [showTrash, favoriteOnly, categoryFilter, currentCollectionName, statusFilter]);
 
   if (!authReady) {
     return <main className="app-shell">세션 확인 중...</main>;
@@ -1114,6 +1202,7 @@ export default function App() {
                 onClick={() => {
                   setShowTrash(false);
                   setFavoriteOnly(false);
+                  setCollectionFilter("all");
                   setCategoryFilter((prev) => (prev === row.category ? "all" : row.category));
                 }}
               >
@@ -1128,21 +1217,81 @@ export default function App() {
             <button
               type="button"
               className={`nav-btn ${collectionFilter === "all" ? "active" : ""}`}
-              onClick={() => setCollectionFilter("all")}
+              onClick={() => {
+                setCollectionFilter("all");
+                setCategoryFilter("all");
+              }}
             >
               모든 컬렉션
             </button>
-            {collections.map((collection) => (
-              <button
-                key={collection.id}
-                type="button"
-                className={`nav-btn ${collectionFilter === collection.id ? "active" : ""}`}
-                onClick={() => setCollectionFilter(collection.id)}
-              >
-                <span className="collection-dot" style={{ backgroundColor: collection.color || "#8b7bff" }} />
-                {collection.name}
-              </button>
-            ))}
+            {collections.map((collection) => {
+              const count = links.filter((item) => item.collection_id === collection.id).length;
+              return (
+                <div key={collection.id} className={`collection-item ${collectionFilter === collection.id ? "active" : ""}`}>
+                  <button
+                    type="button"
+                    className={`nav-btn collection-btn ${collectionFilter === collection.id ? "active" : ""}`}
+                    onClick={() => {
+                      setCategoryFilter("all");
+                      setCollectionFilter(collection.id);
+                    }}
+                  >
+                    <span className="collection-dot" style={{ backgroundColor: collection.color || "#8b7bff" }} />
+                    {collection.name}
+                    <span className="nav-count">{count}</span>
+                  </button>
+                  <div className="collection-actions">
+                    <button
+                      type="button"
+                      className="collection-icon-btn"
+                      title="수정"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        startCollectionEdit(collection);
+                      }}
+                    >
+                      ✏️
+                    </button>
+                    <button
+                      type="button"
+                      className="collection-icon-btn danger"
+                      title="삭제"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void handleDeleteCollection(collection.id);
+                      }}
+                    >
+                      🗑️
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+            <form onSubmit={handleCreateCollection} className="sidebar-collection-form">
+              <input
+                value={collectionName}
+                onChange={(event) => setCollectionName(event.target.value)}
+                placeholder="컬렉션 이름"
+                required
+              />
+              <div className="sidebar-collection-row">
+                <input type="color" value={collectionColor} onChange={(event) => setCollectionColor(event.target.value)} />
+                <button type="submit">{editingCollectionId ? "수정" : "+ 컬렉션 추가"}</button>
+                {editingCollectionId && (
+                  <button
+                    type="button"
+                    className="ghost"
+                    onClick={() => {
+                      setEditingCollectionId(null);
+                      setCollectionName("");
+                      setCollectionColor("#5f7df3");
+                    }}
+                  >
+                    취소
+                  </button>
+                )}
+              </div>
+            </form>
           </div>
         </div>
 
@@ -1162,7 +1311,7 @@ export default function App() {
 
       <main className="main">
         <header className="topbar">
-          <h2 className="page-title">{showTrash ? "휴지통" : favoriteOnly ? "즐겨찾기" : "전체 기사"}</h2>
+          <h2 className="page-title">{currentViewTitle}</h2>
           <div className="topbar-right">
             <input
               ref={searchInputRef}
@@ -1201,9 +1350,26 @@ export default function App() {
             >
               + 링크 추가
             </button>
-            <button type="button" className="ghost" onClick={handleLogout} disabled={logoutLoading}>
-              {logoutLoading ? "로그아웃 중..." : "로그아웃"}
-            </button>
+            <div className="user-menu-wrap" onClick={(event) => event.stopPropagation()}>
+              <button
+                type="button"
+                className="user-btn"
+                onClick={() => setShowUserMenu((prev) => !prev)}
+                aria-label="사용자 메뉴"
+              >
+                <span className="user-avatar">{userInitial}</span>
+                <span>{userLabel}</span>
+                <span>▾</span>
+              </button>
+              {showUserMenu && (
+                <div className="user-menu">
+                  <p>{session.user.email}</p>
+                  <button type="button" className="ghost" onClick={handleLogout} disabled={logoutLoading}>
+                    {logoutLoading ? "로그아웃 중..." : "로그아웃"}
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </header>
 
@@ -1267,50 +1433,6 @@ export default function App() {
               </button>
             </div>
           </section>
-
-          <div className="panel-row">
-            <section className="panel">
-              <h2>컬렉션 생성</h2>
-              <form onSubmit={handleCreateCollection} className="collection-form">
-                <input
-                  value={collectionName}
-                  onChange={(event) => setCollectionName(event.target.value)}
-                  placeholder="새 컬렉션 이름"
-                  required
-                />
-                <input type="color" value={collectionColor} onChange={(event) => setCollectionColor(event.target.value)} />
-                <button type="submit">추가</button>
-              </form>
-            </section>
-
-            <section className="panel">
-              <h2>정렬/필터</h2>
-              <div className="filters">
-                <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}>
-                  <option value="all">모든 상태</option>
-                  <option value="unread">읽기전</option>
-                  <option value="reading">읽음</option>
-                  <option value="done">완료</option>
-                  <option value="archived">보관</option>
-                </select>
-
-                <select value={collectionFilter} onChange={(event) => setCollectionFilter(event.target.value)}>
-                  <option value="all">모든 컬렉션</option>
-                  {collections.map((collection) => (
-                    <option key={collection.id} value={collection.id}>
-                      {collection.name}
-                    </option>
-                  ))}
-                </select>
-
-                <select value={sortMode} onChange={(event) => setSortMode(event.target.value as SortMode)}>
-                  <option value="newest">최신순</option>
-                  <option value="oldest">오래된순</option>
-                  <option value="rating">별점순</option>
-                </select>
-              </div>
-            </section>
-          </div>
 
           <section className={`panel links-panel ${viewMode}`}>
             <div className="section-head">
