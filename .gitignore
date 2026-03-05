@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+.dev.vars
+.wrangler/
+config/
+.DS_Store
+*.tsbuildinfo
+!**/.env.example
+!**/.dev.vars.example

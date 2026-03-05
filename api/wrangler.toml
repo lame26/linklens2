@@ -1,0 +1,6 @@
+name = "linkpocket-api"
+main = "src/index.ts"
+compatibility_date = "2026-03-05"
+
+[vars]
+OPENAI_MODEL = "gpt-4o-mini"

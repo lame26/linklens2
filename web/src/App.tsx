@@ -1,0 +1,1261 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { Session } from "@supabase/supabase-js";
+import { supabase } from "./lib/supabase";
+import type { Collection, LinkItem, LinkStatus } from "./lib/types";
+
+const RAW_API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim() || "";
+
+function isLocalHost(hostname: string): boolean {
+  return hostname === "localhost" || hostname === "127.0.0.1";
+}
+
+const API_BASE_URL = (() => {
+  if (!RAW_API_BASE_URL) {
+    return "";
+  }
+
+  if (typeof window !== "undefined") {
+    const appOnLocalhost = isLocalHost(window.location.hostname);
+    try {
+      const targetHost = new URL(RAW_API_BASE_URL).hostname;
+      if (!appOnLocalhost && isLocalHost(targetHost)) {
+        return "";
+      }
+    } catch {
+      return "";
+    }
+  }
+
+  return RAW_API_BASE_URL.replace(/\/$/, "");
+})();
+
+function toApiUrl(pathname: string): string {
+  return API_BASE_URL ? `${API_BASE_URL}${pathname}` : pathname;
+}
+
+type SortMode = "newest" | "oldest" | "rating";
+type ViewMode = "card" | "list";
+type StatusFilter = "all" | LinkStatus;
+
+interface LinkDraft {
+  note: string;
+  status: LinkStatus;
+  rating: string;
+  tags: string;
+  collectionId: string;
+}
+
+const STATUS_LABEL: Record<LinkStatus, string> = {
+  unread: "읽기전",
+  reading: "읽음",
+  done: "완료",
+  archived: "보관"
+};
+
+const AI_STATE_LABEL: Record<string, string> = {
+  pending: "분석중",
+  success: "완료",
+  failed: "실패",
+  idle: "대기"
+};
+
+function formatDateLabel(iso: string): string {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? "-" : date.toLocaleDateString("ko-KR");
+}
+
+function renderRating(rating: number | null): string {
+  if (!rating || rating < 1) {
+    return "미평가";
+  }
+
+  return `${"★".repeat(rating)}${"☆".repeat(5 - rating)}`;
+}
+
+function getUrlHostLabel(rawUrl: string): string {
+  try {
+    return new URL(rawUrl).hostname.replace(/^www\./, "");
+  } catch {
+    return rawUrl;
+  }
+}
+
+function normalizeTags(raw: string): string[] {
+  const set = new Set<string>();
+  raw
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .forEach((item) => {
+      const key = item.toLowerCase();
+      if (!set.has(key)) {
+        set.add(key);
+      }
+    });
+
+  return Array.from(set.values());
+}
+
+function parseUrlValid(input: string): boolean {
+  try {
+    const parsed = new URL(input);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function parseRating(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const parsed = Number(trimmed);
+  if (Number.isNaN(parsed)) {
+    return null;
+  }
+
+  if (parsed < 1) {
+    return 1;
+  }
+
+  if (parsed > 5) {
+    return 5;
+  }
+
+  return parsed;
+}
+
+function mapLinkRow(row: any): LinkItem {
+  const tags = Array.isArray(row?.link_tags)
+    ? row.link_tags
+        .map((item: any) => item?.tag?.name)
+        .filter((value: unknown): value is string => typeof value === "string")
+    : [];
+
+  return {
+    id: row.id,
+    url: row.url,
+    title: row.title,
+    note: row.note,
+    status: row.status,
+    rating: row.rating,
+    is_favorite: row.is_favorite,
+    category: row.category,
+    summary: row.summary,
+    keywords: Array.isArray(row.keywords) ? row.keywords : [],
+    collection_id: row.collection_id,
+    ai_state: row.ai_state,
+    ai_error: row.ai_error,
+    created_at: row.created_at,
+    deleted_at: row.deleted_at,
+    collection: row.collection
+      ? {
+          id: row.collection.id,
+          name: row.collection.name,
+          color: row.collection.color
+        }
+      : null,
+    tags
+  };
+}
+
+function getLinkDraft(link: LinkItem): LinkDraft {
+  return {
+    note: link.note || "",
+    status: link.status,
+    rating: link.rating ? String(link.rating) : "",
+    tags: link.tags.join(", "),
+    collectionId: link.collection_id || ""
+  };
+}
+
+export default function App() {
+  const [session, setSession] = useState<Session | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [authLoading, setAuthLoading] = useState(false);
+
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [authMode, setAuthMode] = useState<"login" | "signup">("login");
+
+  const [links, setLinks] = useState<LinkItem[]>([]);
+  const [collections, setCollections] = useState<Collection[]>([]);
+  const [drafts, setDrafts] = useState<Record<string, LinkDraft>>({});
+
+  const [loadingLinks, setLoadingLinks] = useState(false);
+  const [savingLink, setSavingLink] = useState(false);
+  const [savingLinkId, setSavingLinkId] = useState<string | null>(null);
+
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [collectionFilter, setCollectionFilter] = useState<string>("all");
+  const [sortMode, setSortMode] = useState<SortMode>("newest");
+  const [viewMode, setViewMode] = useState<ViewMode>("card");
+  const [showTrash, setShowTrash] = useState(false);
+
+  const [newUrl, setNewUrl] = useState("");
+  const [newNote, setNewNote] = useState("");
+  const [newStatus, setNewStatus] = useState<LinkStatus>("unread");
+  const [newCollectionId, setNewCollectionId] = useState("");
+  const [newTags, setNewTags] = useState("");
+
+  const [collectionName, setCollectionName] = useState("");
+  const [collectionColor, setCollectionColor] = useState("#5f7df3");
+  const [selectedLinkId, setSelectedLinkId] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ kind: "info" | "ok" | "err"; message: string } | null>(null);
+
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const selectedLink = useMemo(() => links.find((item) => item.id === selectedLinkId) || null, [links, selectedLinkId]);
+  const selectedDraft = selectedLink ? drafts[selectedLink.id] || getLinkDraft(selectedLink) : null;
+
+  useEffect(() => {
+    void supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session ?? null);
+      setAuthReady(true);
+    });
+
+    const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession);
+      setAuthReady(true);
+    });
+
+    return () => data.subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!toast) {
+      return;
+    }
+    const timer = setTimeout(() => setToast(null), 2600);
+    return () => clearTimeout(timer);
+  }, [toast]);
+
+  useEffect(() => {
+    if (!selectedLinkId) {
+      return;
+    }
+    if (!links.some((item) => item.id === selectedLinkId)) {
+      setSelectedLinkId(null);
+    }
+  }, [links, selectedLinkId]);
+
+  const loadCollections = useCallback(async () => {
+    if (!session) {
+      setCollections([]);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("collections")
+      .select("id, name, color")
+      .order("name", { ascending: true });
+
+    if (error) {
+      setErrorMessage(`컬렉션 조회 실패: ${error.message}`);
+      return;
+    }
+
+    setCollections((data || []) as Collection[]);
+  }, [session]);
+
+  const loadLinks = useCallback(async () => {
+    if (!session) {
+      setLinks([]);
+      return;
+    }
+
+    setLoadingLinks(true);
+    setErrorMessage(null);
+
+    let query = supabase
+      .from("links")
+      .select(
+        "id, url, title, note, status, rating, is_favorite, category, summary, keywords, collection_id, ai_state, ai_error, created_at, deleted_at, collection:collections(id, name, color), link_tags(tag:tags(name))"
+      );
+
+    query = showTrash ? query.not("deleted_at", "is", null) : query.is("deleted_at", null);
+
+    if (statusFilter !== "all") {
+      query = query.eq("status", statusFilter);
+    }
+
+    if (collectionFilter !== "all") {
+      query = query.eq("collection_id", collectionFilter);
+    }
+
+    const searchValue = search.trim();
+    if (searchValue) {
+      query = query.or(`url.ilike.%${searchValue}%,title.ilike.%${searchValue}%,note.ilike.%${searchValue}%`);
+    }
+
+    if (sortMode === "newest") {
+      query = query.order("created_at", { ascending: false });
+    }
+
+    if (sortMode === "oldest") {
+      query = query.order("created_at", { ascending: true });
+    }
+
+    if (sortMode === "rating") {
+      query = query.order("rating", { ascending: false, nullsFirst: false });
+      query = query.order("created_at", { ascending: false });
+    }
+
+    const { data, error } = await query.limit(200);
+
+    setLoadingLinks(false);
+
+    if (error) {
+      setErrorMessage(`링크 조회 실패: ${error.message}`);
+      return;
+    }
+
+    const mapped = (data || []).map(mapLinkRow);
+    setLinks(mapped);
+  }, [session, showTrash, statusFilter, collectionFilter, search, sortMode]);
+
+  const runAiEnrichmentInBackground = useCallback(
+    async (linkId: string) => {
+      if (!session) {
+        return;
+      }
+
+      try {
+        const response = await fetch(toApiUrl("/api/v1/ai/analyze-link"), {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: `Bearer ${session.access_token}`
+          },
+          body: JSON.stringify({ linkId })
+        });
+
+        if (!response.ok) {
+          throw new Error(await response.text());
+        }
+        setToast({ kind: "ok", message: "AI 분석 완료: 제목/요약/태그를 자동 업데이트했어요." });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        setErrorMessage(`AI 자동 분석 실패: ${message}`);
+        setToast({ kind: "err", message: "AI 자동 분석 실패. 카드의 재시도 버튼으로 다시 실행하세요." });
+      } finally {
+        await loadLinks();
+      }
+    },
+    [session, loadLinks]
+  );
+
+  useEffect(() => {
+    if (!session) {
+      return;
+    }
+
+    void Promise.all([loadCollections(), loadLinks()]);
+  }, [session, loadCollections, loadLinks]);
+
+  async function syncLinkTags(linkId: string, tagsRaw: string): Promise<void> {
+    if (!session) {
+      return;
+    }
+
+    const names = normalizeTags(tagsRaw);
+
+    if (names.length > 0) {
+      const upsertPayload = names.map((name) => ({
+        user_id: session.user.id,
+        name
+      }));
+
+      const { error: upsertError } = await supabase.from("tags").upsert(upsertPayload, {
+        onConflict: "user_id,name",
+        ignoreDuplicates: true
+      });
+
+      if (upsertError) {
+        throw upsertError;
+      }
+    }
+
+    const { data: tagRows, error: tagError } = names.length
+      ? await supabase.from("tags").select("id, name").in("name", names)
+      : { data: [], error: null };
+
+    if (tagError) {
+      throw tagError;
+    }
+
+    const tagIds = (tagRows || []).map((row: any) => row.id);
+
+    const { error: deleteError } = await supabase.from("link_tags").delete().eq("link_id", linkId);
+    if (deleteError) {
+      throw deleteError;
+    }
+
+    if (tagIds.length > 0) {
+      const rows = tagIds.map((tagId) => ({
+        link_id: linkId,
+        tag_id: tagId
+      }));
+
+      const { error: linkTagError } = await supabase.from("link_tags").insert(rows);
+      if (linkTagError) {
+        throw linkTagError;
+      }
+    }
+  }
+
+  async function handleAuthSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    setAuthLoading(true);
+    setErrorMessage(null);
+
+    try {
+      if (authMode === "signup") {
+        const { error } = await supabase.auth.signUp({ email, password });
+        if (error) {
+          throw error;
+        }
+        setErrorMessage("회원가입 완료. 이메일 인증 후 로그인해 주세요.");
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) {
+          throw error;
+        }
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setErrorMessage(`인증 처리 실패: ${message}`);
+    } finally {
+      setAuthLoading(false);
+    }
+  }
+
+  async function handleLogout() {
+    await supabase.auth.signOut();
+    setLinks([]);
+  }
+
+  async function handleCreateCollection(event: React.FormEvent) {
+    event.preventDefault();
+    if (!session || !collectionName.trim()) {
+      return;
+    }
+
+    const { error } = await supabase.from("collections").insert([
+      {
+        user_id: session.user.id,
+        name: collectionName.trim(),
+        color: collectionColor
+      }
+    ]);
+
+    if (error) {
+      setErrorMessage(`컬렉션 생성 실패: ${error.message}`);
+      return;
+    }
+
+    setCollectionName("");
+    await loadCollections();
+  }
+
+  async function handleCreateLink(event: React.FormEvent) {
+    event.preventDefault();
+    if (!session) {
+      return;
+    }
+
+    const trimmedUrl = newUrl.trim();
+    if (!parseUrlValid(trimmedUrl)) {
+      setErrorMessage("유효한 URL을 입력해 주세요.");
+      return;
+    }
+
+    setSavingLink(true);
+    setErrorMessage(null);
+
+    try {
+      const payload = {
+        user_id: session.user.id,
+        url: trimmedUrl,
+        title: null,
+        note: newNote.trim() || null,
+        status: newStatus,
+        collection_id: newCollectionId || null
+      };
+
+      const { data, error } = await supabase
+        .from("links")
+        .insert([payload])
+        .select(
+          "id, url, title, note, status, rating, is_favorite, category, summary, keywords, collection_id, ai_state, ai_error, created_at, deleted_at"
+        )
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      const optimistic: LinkItem = {
+        id: data.id,
+        url: data.url,
+        title: data.title,
+        note: data.note,
+        status: data.status,
+        rating: data.rating,
+        is_favorite: data.is_favorite,
+        category: data.category,
+        summary: data.summary,
+        keywords: data.keywords || [],
+        collection_id: data.collection_id,
+        ai_state: data.ai_state,
+        ai_error: data.ai_error,
+        created_at: data.created_at,
+        deleted_at: data.deleted_at,
+        collection: collections.find((item) => item.id === data.collection_id) || null,
+        tags: normalizeTags(newTags)
+      };
+
+      setLinks((prev) => [ { ...optimistic, ai_state: "pending", ai_error: null }, ...prev ]);
+      await syncLinkTags(data.id, newTags);
+      setToast({ kind: "info", message: "링크 저장됨. 백그라운드에서 AI 분석 중..." });
+
+      setNewUrl("");
+      setNewNote("");
+      setNewStatus("unread");
+      setNewCollectionId("");
+      setNewTags("");
+
+      void runAiEnrichmentInBackground(data.id);
+      void loadLinks();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setErrorMessage(`링크 저장 실패: ${message}`);
+    } finally {
+      setSavingLink(false);
+    }
+  }
+
+  async function updateLink(link: LinkItem) {
+    if (!session) {
+      return;
+    }
+
+    const draft = drafts[link.id] || getLinkDraft(link);
+    const ratingValue = parseRating(draft.rating);
+
+    setSavingLinkId(link.id);
+    setErrorMessage(null);
+
+    try {
+      const payload = {
+        note: draft.note.trim() || null,
+        status: draft.status,
+        rating: ratingValue,
+        collection_id: draft.collectionId || null
+      };
+
+      const { error } = await supabase.from("links").update(payload).eq("id", link.id);
+      if (error) {
+        throw error;
+      }
+
+      await syncLinkTags(link.id, draft.tags);
+      await loadLinks();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setErrorMessage(`링크 수정 실패: ${message}`);
+    } finally {
+      setSavingLinkId(null);
+    }
+  }
+
+  async function setLinkDeleted(linkId: string, deleted: boolean) {
+    const { error } = await supabase
+      .from("links")
+      .update({ deleted_at: deleted ? new Date().toISOString() : null })
+      .eq("id", linkId);
+
+    if (error) {
+      setErrorMessage(`삭제/복원 실패: ${error.message}`);
+      return;
+    }
+
+    await loadLinks();
+  }
+
+  async function toggleFavorite(link: LinkItem) {
+    const { error } = await supabase
+      .from("links")
+      .update({ is_favorite: !link.is_favorite })
+      .eq("id", link.id);
+
+    if (error) {
+      setErrorMessage(`즐겨찾기 변경 실패: ${error.message}`);
+      return;
+    }
+
+    setLinks((prev) => prev.map((item) => (item.id === link.id ? { ...item, is_favorite: !item.is_favorite } : item)));
+  }
+
+  async function runAiAnalysis(link: LinkItem) {
+    if (!session) {
+      return;
+    }
+
+    setSavingLinkId(link.id);
+
+    try {
+      setLinks((prev) => prev.map((item) => (item.id === link.id ? { ...item, ai_state: "pending", ai_error: null } : item)));
+
+      const response = await fetch(toApiUrl("/api/v1/ai/analyze-link"), {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({ linkId: link.id })
+      });
+
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+
+      await loadLinks();
+      setToast({ kind: "ok", message: "AI 분석이 완료되었습니다." });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setErrorMessage(`AI 분석 실패: ${message}`);
+      setToast({ kind: "err", message: "AI 분석 실패. 잠시 후 재시도해 주세요." });
+      await loadLinks();
+    } finally {
+      setSavingLinkId(null);
+    }
+  }
+
+  const markLinkAsRead = useCallback(
+    async (linkId: string) => {
+      if (!session) {
+        return;
+      }
+
+      setLinks((prev) => prev.map((item) => (item.id === linkId && item.status === "unread" ? { ...item, status: "reading" } : item)));
+      setDrafts((prev) => {
+        const current = prev[linkId];
+        if (!current || current.status !== "unread") {
+          return prev;
+        }
+        return {
+          ...prev,
+          [linkId]: {
+            ...current,
+            status: "reading"
+          }
+        };
+      });
+
+      const { error } = await supabase
+        .from("links")
+        .update({ status: "reading" })
+        .eq("id", linkId)
+        .eq("status", "unread");
+
+      if (error) {
+        setErrorMessage(`읽음 상태 변경 실패: ${error.message}`);
+        await loadLinks();
+      }
+    },
+    [session, loadLinks]
+  );
+
+  const openLinkDetail = useCallback(
+    (link: LinkItem) => {
+      setSelectedLinkId(link.id);
+      if (link.status === "unread") {
+        void markLinkAsRead(link.id);
+      }
+    },
+    [markLinkAsRead]
+  );
+
+  function updateDraft(link: LinkItem, patch: Partial<LinkDraft>) {
+    setDrafts((prev) => {
+      const current = prev[link.id] || getLinkDraft(link);
+      return {
+        ...prev,
+        [link.id]: {
+          ...current,
+          ...patch
+        }
+      };
+    });
+  }
+
+  const headerStats = useMemo(
+    () => ({
+      total: links.length,
+      unread: links.filter((item) => item.status === "unread").length,
+      reading: links.filter((item) => item.status === "reading").length,
+      done: links.filter((item) => item.status === "done").length,
+      favorite: links.filter((item) => item.is_favorite).length
+    }),
+    [links]
+  );
+
+  const categoryStats = useMemo(() => {
+    const seed: Record<string, number> = {};
+    for (const item of links) {
+      const key = (item.category || "uncategorized").toLowerCase();
+      seed[key] = (seed[key] || 0) + 1;
+    }
+    return Object.entries(seed)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5);
+  }, [links]);
+
+  if (!authReady) {
+    return <main className="app-shell">세션 확인 중...</main>;
+  }
+
+  if (!session) {
+    return (
+      <main className="app-shell auth-shell">
+        <section className="auth-card">
+          <h1>LinkPocket</h1>
+          <p>가볍게 저장하고, 나중에 정확하게 찾는 개인 링크 아카이브</p>
+
+          <form onSubmit={handleAuthSubmit} className="stack">
+            <label>
+              이메일
+              <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
+            </label>
+
+            <label>
+              비밀번호
+              <input
+                type="password"
+                minLength={6}
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                required
+              />
+            </label>
+
+            <button type="submit" disabled={authLoading}>
+              {authLoading ? "처리 중..." : authMode === "login" ? "로그인" : "회원가입"}
+            </button>
+          </form>
+
+          <button type="button" className="ghost" onClick={() => setAuthMode(authMode === "login" ? "signup" : "login")}>
+            {authMode === "login" ? "회원가입으로 전환" : "로그인으로 전환"}
+          </button>
+
+          {errorMessage && <p className="error-text">{errorMessage}</p>}
+        </section>
+      </main>
+    );
+  }
+
+  return (
+    <div className="app-layout">
+      <aside className="sidebar">
+        <div className="logo">
+          <div>
+            <p className="eyebrow">Reading Archive</p>
+            <h1 className="logo-name">LinkPocket</h1>
+          </div>
+        </div>
+
+        <div className="sidebar-scroll">
+          <div className="nav-group">
+            <p className="nav-group-label">라이브러리</p>
+            <button
+              type="button"
+              className={`nav-btn ${!showTrash && statusFilter === "all" ? "active" : ""}`}
+              onClick={() => {
+                setShowTrash(false);
+                setStatusFilter("all");
+              }}
+            >
+              전체 기사 <span className="nav-count">{headerStats.total}</span>
+            </button>
+            <button
+              type="button"
+              className={`nav-btn ${!showTrash && statusFilter === "unread" ? "active" : ""}`}
+              onClick={() => {
+                setShowTrash(false);
+                setStatusFilter("unread");
+              }}
+            >
+              읽기전 <span className="nav-count">{headerStats.unread}</span>
+            </button>
+            <button
+              type="button"
+              className={`nav-btn ${!showTrash && statusFilter === "reading" ? "active" : ""}`}
+              onClick={() => {
+                setShowTrash(false);
+                setStatusFilter("reading");
+              }}
+            >
+              읽음 <span className="nav-count">{headerStats.reading}</span>
+            </button>
+            <button
+              type="button"
+              className={`nav-btn ${!showTrash && statusFilter === "done" ? "active" : ""}`}
+              onClick={() => {
+                setShowTrash(false);
+                setStatusFilter("done");
+              }}
+            >
+              완료 <span className="nav-count">{headerStats.done}</span>
+            </button>
+            <button type="button" className={`nav-btn ${showTrash ? "active" : ""}`} onClick={() => setShowTrash((prev) => !prev)}>
+              휴지통 <span className="nav-count">{showTrash ? links.length : 0}</span>
+            </button>
+          </div>
+
+          <div className="nav-group">
+            <p className="nav-group-label">카테고리 요약</p>
+            {categoryStats.length === 0 && <p className="sidebar-empty">아직 데이터 없음</p>}
+            {categoryStats.map(([name, count]) => (
+              <div key={name} className="cat-row">
+                <span>{name}</span>
+                <span>{count}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="nav-group">
+            <p className="nav-group-label">컬렉션</p>
+            <button
+              type="button"
+              className={`nav-btn ${collectionFilter === "all" ? "active" : ""}`}
+              onClick={() => setCollectionFilter("all")}
+            >
+              모든 컬렉션
+            </button>
+            {collections.map((collection) => (
+              <button
+                key={collection.id}
+                type="button"
+                className={`nav-btn ${collectionFilter === collection.id ? "active" : ""}`}
+                onClick={() => setCollectionFilter(collection.id)}
+              >
+                <span className="collection-dot" style={{ backgroundColor: collection.color || "#8b7bff" }} />
+                {collection.name}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="sidebar-footer">
+          <div className="plan-card">
+            <div className="plan-row">
+              <span>현재 저장량</span>
+              <strong>{headerStats.total} / 30</strong>
+            </div>
+            <div className="plan-bar-bg">
+              <div className="plan-bar" style={{ width: `${Math.min(100, Math.round((headerStats.total / 30) * 100))}%` }} />
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <main className="main">
+        <header className="topbar">
+          <h2 className="page-title">{showTrash ? "휴지통" : "내 링크 라이브러리"}</h2>
+          <div className="topbar-right">
+            <input
+              className="search-input"
+              placeholder="URL, 제목, 메모 검색"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+            <button type="button" className="ghost" onClick={() => setViewMode(viewMode === "card" ? "list" : "card")}>
+              {viewMode === "card" ? "카드" : "리스트"}
+            </button>
+            <button type="button" className="ghost" onClick={() => void loadLinks()}>
+              새로고침
+            </button>
+            <button type="button" className="ghost" onClick={handleLogout}>
+              로그아웃
+            </button>
+          </div>
+        </header>
+
+        <div className="content">
+          <section className="stats-grid">
+            <article className="stat">
+              <span>전체</span>
+              <strong>{headerStats.total}</strong>
+            </article>
+            <article className="stat">
+              <span>읽기전</span>
+              <strong>{headerStats.unread}</strong>
+            </article>
+            <article className="stat">
+              <span>읽음</span>
+              <strong>{headerStats.reading}</strong>
+            </article>
+            <article className="stat">
+              <span>완료</span>
+              <strong>{headerStats.done}</strong>
+            </article>
+            <article className="stat">
+              <span>즐겨찾기</span>
+              <strong>{headerStats.favorite}</strong>
+            </article>
+          </section>
+
+          <section className="panel panel-accent">
+            <h2>링크 추가</h2>
+            <p className="section-subtitle">붙여넣고 저장하면 AI 제목과 분석까지 바로 이어진다.</p>
+            <form onSubmit={handleCreateLink} className="grid-form">
+              <label className="full">
+                URL
+                <input value={newUrl} onChange={(event) => setNewUrl(event.target.value)} placeholder="https://..." required />
+              </label>
+
+              <p className="muted full">제목/요약/태그/카테고리는 저장 후 AI가 자동 생성한다.</p>
+
+              <label>
+                상태
+                <select value={newStatus} onChange={(event) => setNewStatus(event.target.value as LinkStatus)}>
+                  <option value="unread">읽기전</option>
+                  <option value="reading">읽음</option>
+                  <option value="done">완료</option>
+                  <option value="archived">보관</option>
+                </select>
+              </label>
+
+              <label>
+                컬렉션
+                <select value={newCollectionId} onChange={(event) => setNewCollectionId(event.target.value)}>
+                  <option value="">없음</option>
+                  {collections.map((collection) => (
+                    <option key={collection.id} value={collection.id}>
+                      {collection.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="full">
+                태그 (쉼표 구분)
+                <input value={newTags} onChange={(event) => setNewTags(event.target.value)} placeholder="ai, cloudflare, 읽을거리" />
+              </label>
+
+              <label className="full">
+                메모
+                <textarea value={newNote} onChange={(event) => setNewNote(event.target.value)} rows={3} placeholder="요약 메모" />
+              </label>
+
+              <button type="submit" disabled={savingLink}>
+                {savingLink ? "저장 중..." : "링크 저장"}
+              </button>
+            </form>
+          </section>
+
+          <div className="panel-row">
+            <section className="panel">
+              <h2>컬렉션 생성</h2>
+              <form onSubmit={handleCreateCollection} className="collection-form">
+                <input
+                  value={collectionName}
+                  onChange={(event) => setCollectionName(event.target.value)}
+                  placeholder="새 컬렉션 이름"
+                  required
+                />
+                <input type="color" value={collectionColor} onChange={(event) => setCollectionColor(event.target.value)} />
+                <button type="submit">추가</button>
+              </form>
+            </section>
+
+            <section className="panel">
+              <h2>정렬/필터</h2>
+              <div className="filters">
+                <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}>
+                  <option value="all">모든 상태</option>
+                  <option value="unread">읽기전</option>
+                  <option value="reading">읽음</option>
+                  <option value="done">완료</option>
+                  <option value="archived">보관</option>
+                </select>
+
+                <select value={collectionFilter} onChange={(event) => setCollectionFilter(event.target.value)}>
+                  <option value="all">모든 컬렉션</option>
+                  {collections.map((collection) => (
+                    <option key={collection.id} value={collection.id}>
+                      {collection.name}
+                    </option>
+                  ))}
+                </select>
+
+                <select value={sortMode} onChange={(event) => setSortMode(event.target.value as SortMode)}>
+                  <option value="newest">최신순</option>
+                  <option value="oldest">오래된순</option>
+                  <option value="rating">별점순</option>
+                </select>
+              </div>
+            </section>
+          </div>
+
+          <section className={`panel links-panel ${viewMode}`}>
+            <div className="section-head">
+              <h2>{showTrash ? "휴지통 링크" : "링크 목록"}</h2>
+              <span className="result-count">{links.length}개</span>
+            </div>
+            {loadingLinks && <p className="muted">불러오는 중...</p>}
+
+            {!loadingLinks && links.length === 0 && (
+              <div className="empty-state">
+                <strong>조건에 맞는 링크가 없다.</strong>
+                <p>필터를 완화하거나 새 링크를 추가해보자.</p>
+              </div>
+            )}
+
+            {!loadingLinks &&
+              links.map((link) => {
+                return (
+                  <article
+                    key={link.id}
+                    className={`link-card ${selectedLinkId === link.id ? "selected" : ""}`}
+                    onClick={() => openLinkDetail(link)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        openLinkDetail(link);
+                      }
+                    }}
+                  >
+                    <header>
+                      <div className="link-title-wrap">
+                        <div className="link-title-head">
+                          {link.status === "unread" && <span className="unread-dot" aria-label="미읽음" />}
+                          <h3>{link.title || link.url}</h3>
+                        </div>
+                        <a
+                          href={link.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                          }}
+                        >
+                          {getUrlHostLabel(link.url)}
+                        </a>
+                      </div>
+                      <div className="pill-row">
+                        <span className={`pill status-pill status-${link.status}`}>{STATUS_LABEL[link.status]}</span>
+                        {link.collection && (
+                          <span className="pill collection-pill">
+                            {link.collection.color && <i style={{ backgroundColor: link.collection.color }} aria-hidden />}
+                            {link.collection.name}
+                          </span>
+                        )}
+                        {link.ai_state !== "idle" && (
+                          <span className={`pill ai-pill ai-${link.ai_state}`}>AI {AI_STATE_LABEL[link.ai_state] || link.ai_state}</span>
+                        )}
+                      </div>
+                    </header>
+
+                    <div className="link-meta">
+                      <span>{getUrlHostLabel(link.url)}</span>
+                      <span>{formatDateLabel(link.created_at)}</span>
+                      <span>{STATUS_LABEL[link.status]}</span>
+                    </div>
+
+                    {link.summary && <p className="summary">{link.summary}</p>}
+                    {link.keywords.length > 0 && <p className="keywords">#{link.keywords.join(" #")}</p>}
+                    {link.ai_error && <p className="error-text">AI 오류: {link.ai_error}</p>}
+
+                    <div className="card-actions">
+                      <button
+                        type="button"
+                        className="ghost"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          window.open(link.url, "_blank", "noopener,noreferrer");
+                        }}
+                      >
+                        열기
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost ghost-strong"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void toggleFavorite(link);
+                        }}
+                      >
+                        {link.is_favorite ? "즐겨찾기 해제" : "즐겨찾기"}
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          openLinkDetail(link);
+                        }}
+                      >
+                        편집
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void runAiAnalysis(link);
+                        }}
+                        disabled={savingLinkId === link.id}
+                      >
+                        AI 분석
+                      </button>
+                      {(link.ai_state === "failed" || link.ai_error) && (
+                        <button
+                          type="button"
+                          className="ghost"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void runAiAnalysis(link);
+                          }}
+                          disabled={savingLinkId === link.id}
+                        >
+                          재시도
+                        </button>
+                      )}
+                      {showTrash ? (
+                        <button
+                          type="button"
+                          className="ghost ghost-strong"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void setLinkDeleted(link.id, false);
+                          }}
+                        >
+                          복원
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="ghost ghost-danger"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void setLinkDeleted(link.id, true);
+                          }}
+                        >
+                          삭제
+                        </button>
+                      )}
+                    </div>
+                  </article>
+                );
+              })}
+          </section>
+        </div>
+
+        <div
+          className={`detail-backdrop ${selectedLink ? "open" : ""}`}
+          onClick={() => setSelectedLinkId(null)}
+          aria-hidden={!selectedLink}
+        />
+        <aside className={`detail-panel ${selectedLink ? "open" : ""}`} aria-hidden={!selectedLink}>
+          {selectedLink && selectedDraft && (
+            <>
+              <div className="detail-head">
+                <h3>링크 상세 편집</h3>
+                <button type="button" className="ghost" onClick={() => setSelectedLinkId(null)}>
+                  닫기
+                </button>
+              </div>
+              <div className="detail-scroll">
+                <p className="detail-title">{selectedLink.title || selectedLink.url}</p>
+                <a href={selectedLink.url} target="_blank" rel="noreferrer">
+                  {selectedLink.url}
+                </a>
+
+                <div className="detail-meta">
+                  <span>{formatDateLabel(selectedLink.created_at)}</span>
+                  <span>{renderRating(selectedLink.rating)}</span>
+                  <span>{selectedLink.collection?.name || "컬렉션 없음"}</span>
+                </div>
+
+                <label>
+                  메모
+                  <textarea
+                    rows={4}
+                    value={selectedDraft.note}
+                    onChange={(event) => updateDraft(selectedLink, { note: event.target.value })}
+                  />
+                </label>
+                <label>
+                  상태
+                  <select
+                    value={selectedDraft.status}
+                    onChange={(event) => updateDraft(selectedLink, { status: event.target.value as LinkStatus })}
+                  >
+                    <option value="unread">읽기전</option>
+                    <option value="reading">읽음</option>
+                    <option value="done">완료</option>
+                    <option value="archived">보관</option>
+                  </select>
+                </label>
+                <label>
+                  컬렉션
+                  <select
+                    value={selectedDraft.collectionId}
+                    onChange={(event) => updateDraft(selectedLink, { collectionId: event.target.value })}
+                  >
+                    <option value="">컬렉션 없음</option>
+                    {collections.map((collection) => (
+                      <option key={collection.id} value={collection.id}>
+                        {collection.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  별점
+                  <input
+                    type="number"
+                    min={1}
+                    max={5}
+                    placeholder="1~5"
+                    value={selectedDraft.rating}
+                    onChange={(event) => updateDraft(selectedLink, { rating: event.target.value })}
+                  />
+                </label>
+                <label>
+                  태그
+                  <input value={selectedDraft.tags} onChange={(event) => updateDraft(selectedLink, { tags: event.target.value })} />
+                </label>
+
+                {selectedLink.ai_error && <p className="error-text">AI 오류: {selectedLink.ai_error}</p>}
+              </div>
+              <div className="detail-actions">
+                <button
+                  type="button"
+                  className="ghost"
+                  onClick={() => void runAiAnalysis(selectedLink)}
+                  disabled={savingLinkId === selectedLink.id}
+                >
+                  AI 재실행
+                </button>
+                <button type="button" onClick={() => void updateLink(selectedLink)} disabled={savingLinkId === selectedLink.id}>
+                  변경 저장
+                </button>
+              </div>
+            </>
+          )}
+        </aside>
+
+        {toast && <div className={`toast toast-${toast.kind}`}>{toast.message}</div>}
+        {errorMessage && <p className="error-text global-error">{errorMessage}</p>}
+      </main>
+    </div>
+  );
+}
