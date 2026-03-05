@@ -203,6 +203,7 @@ export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
+  const [logoutLoading, setLogoutLoading] = useState(false);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -249,10 +250,9 @@ export default function App() {
       setAuthReady(true);
     });
 
-    const { data } = supabase.auth.onAuthStateChange(async (event, nextSession) => {
+    const { data } = supabase.auth.onAuthStateChange((event, nextSession) => {
       if (event === "SIGNED_OUT" && !nextSession) {
-        const { data: latest } = await supabase.auth.getSession();
-        setSession(latest.session ?? null);
+        setSession(null);
         setAuthReady(true);
         return;
       }
@@ -547,10 +547,27 @@ export default function App() {
   }
 
   async function handleLogout() {
+    if (logoutLoading) {
+      return;
+    }
+
+    setLogoutLoading(true);
+    setErrorMessage(null);
     setSelectedLinkId(null);
-    await supabase.auth.signOut();
     setLinks([]);
+    setCollections([]);
     setDrafts({});
+    setSession(null);
+    setAuthReady(true);
+
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        setErrorMessage(`로그아웃 처리 실패: ${error.message}`);
+      }
+    } finally {
+      setLogoutLoading(false);
+    }
   }
 
   async function handleCreateCollection(event: React.FormEvent) {
@@ -996,8 +1013,8 @@ export default function App() {
             <button type="button" className="ghost" onClick={() => void loadLinks()}>
               새로고침
             </button>
-            <button type="button" className="ghost" onClick={handleLogout}>
-              로그아웃
+            <button type="button" className="ghost" onClick={handleLogout} disabled={logoutLoading}>
+              {logoutLoading ? "로그아웃 중..." : "로그아웃"}
             </button>
           </div>
         </header>

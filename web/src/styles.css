@@ -1,29 +1,29 @@
 :root {
-  --bg: #0a0a0b;
-  --bg2: #111113;
-  --surface: #18181b;
-  --surface2: #222227;
-  --surface3: #2a2a31;
-  --border: #2f2f37;
-  --border2: #3b3b47;
-  --text: #f5f5f7;
-  --text2: #a4a4ae;
-  --text3: #767682;
-  --accent: #8b7bff;
-  --accent-dim: rgba(139, 123, 255, 0.14);
-  --accent-border: rgba(139, 123, 255, 0.28);
+  --bg: #060a0f;
+  --bg2: #0e1723;
+  --surface: #141f2f;
+  --surface2: #1a2738;
+  --surface3: #22354d;
+  --border: #2d4360;
+  --border2: #3c5d86;
+  --text: #f6fbff;
+  --text2: #b3c3d6;
+  --text3: #7f95ae;
+  --accent: #1dd3b0;
+  --accent-dim: rgba(29, 211, 176, 0.16);
+  --accent-border: rgba(29, 211, 176, 0.34);
   --green: #34d399;
   --green-dim: rgba(52, 211, 153, 0.13);
   --blue: #60a5fa;
   --blue-dim: rgba(96, 165, 250, 0.13);
-  --amber: #fbbf24;
-  --amber-dim: rgba(251, 191, 36, 0.14);
+  --amber: #f8c14d;
+  --amber-dim: rgba(248, 193, 77, 0.14);
   --red: #f87171;
   --red-dim: rgba(248, 113, 113, 0.14);
-  --radius: 11px;
-  --radius-sm: 8px;
-  --radius-lg: 15px;
-  --shadow: 0 1px 3px rgba(0, 0, 0, 0.45), 0 8px 26px rgba(0, 0, 0, 0.24);
+  --radius: 14px;
+  --radius-sm: 10px;
+  --radius-lg: 20px;
+  --shadow: 0 8px 22px rgba(3, 10, 20, 0.35), 0 18px 46px rgba(0, 0, 0, 0.3);
 }
 
 * {
@@ -39,7 +39,10 @@ body,
 
 body {
   font-family: "Geist", "SUIT Variable", "Pretendard", "Noto Sans KR", sans-serif;
-  background: var(--bg);
+  background:
+    radial-gradient(circle at 12% 0%, rgba(29, 211, 176, 0.14), transparent 34%),
+    radial-gradient(circle at 90% 8%, rgba(96, 165, 250, 0.16), transparent 40%),
+    var(--bg);
   color: var(--text);
   line-height: 1.45;
 }
@@ -137,16 +140,17 @@ textarea {
 button {
   border: 0;
   border-radius: var(--radius-sm);
-  padding: 9px 12px;
-  background: var(--accent);
-  color: #fff;
+  padding: 10px 13px;
+  background: linear-gradient(135deg, #12c8a5, #24b6f1);
+  color: #042726;
   font-weight: 600;
-  transition: transform 0.12s, opacity 0.12s;
+  transition: transform 0.12s, opacity 0.12s, box-shadow 0.14s;
 }
 
 button:hover {
   transform: translateY(-1px);
   opacity: 0.93;
+  box-shadow: 0 10px 24px rgba(36, 182, 241, 0.24);
 }
 
 button:disabled {
@@ -158,7 +162,7 @@ button:disabled {
 button.ghost {
   background: var(--surface2);
   border: 1px solid var(--border);
-  color: var(--text2);
+  color: var(--text);
 }
 
 button.ghost:hover {
@@ -183,8 +187,8 @@ button.ghost-danger {
 }
 
 .sidebar {
-  width: 236px;
-  background: var(--bg2);
+  width: 256px;
+  background: linear-gradient(180deg, rgba(9, 20, 33, 0.95), rgba(9, 20, 33, 0.84));
   border-right: 1px solid var(--border);
   position: fixed;
   left: 0;
@@ -196,7 +200,7 @@ button.ghost-danger {
 }
 
 .logo {
-  padding: 19px 16px 15px;
+  padding: 22px 18px 16px;
   border-bottom: 1px solid var(--border);
 }
 
@@ -341,20 +345,29 @@ button.ghost-danger {
 }
 
 .main {
-  margin-left: 236px;
-  width: calc(100% - 236px);
+  margin-left: 256px;
+  width: calc(100% - 256px);
   min-height: 100vh;
+  position: relative;
+}
+
+.main::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 80% 18%, rgba(29, 211, 176, 0.1), transparent 36%);
+  pointer-events: none;
 }
 
 .topbar {
-  height: 58px;
+  height: 66px;
   border-bottom: 1px solid var(--border);
-  background: rgba(10, 10, 11, 0.84);
+  background: rgba(8, 15, 23, 0.88);
   backdrop-filter: blur(14px);
   position: sticky;
   top: 0;
   z-index: 40;
-  padding: 0 22px;
+  padding: 0 24px;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -363,7 +376,7 @@ button.ghost-danger {
 .page-title {
   margin: 0;
   font-family: "Instrument Serif", serif;
-  font-size: 22px;
+  font-size: 24px;
   font-weight: 400;
 }
 
@@ -375,7 +388,7 @@ button.ghost-danger {
 }
 
 .search-input {
-  width: 280px;
+  width: 320px;
   background: var(--surface2);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -384,9 +397,9 @@ button.ghost-danger {
 }
 
 .content {
-  padding: 18px 22px 26px;
+  padding: 20px 24px 28px;
   display: grid;
-  gap: 13px;
+  gap: 14px;
 }
 
 .stats-grid {
@@ -398,7 +411,7 @@ button.ghost-danger {
 .stat {
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: var(--surface);
+  background: linear-gradient(160deg, rgba(29, 211, 176, 0.09), rgba(20, 31, 47, 0.95));
   padding: 10px 12px;
   display: grid;
   gap: 4px;
@@ -418,7 +431,7 @@ button.ghost-danger {
 .panel {
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: var(--surface);
+  background: linear-gradient(155deg, rgba(20, 31, 47, 0.98), rgba(26, 39, 56, 0.95));
   padding: 14px;
   box-shadow: var(--shadow);
 }
@@ -430,7 +443,7 @@ button.ghost-danger {
 
 .panel-accent {
   border-color: var(--accent-border);
-  background: linear-gradient(180deg, rgba(139, 123, 255, 0.09), rgba(139, 123, 255, 0.04)), var(--surface);
+  background: linear-gradient(180deg, rgba(29, 211, 176, 0.12), rgba(29, 211, 176, 0.04)), var(--surface);
 }
 
 .section-subtitle {
@@ -532,6 +545,21 @@ button.ghost-danger {
 .link-card.selected {
   border-color: var(--accent-border);
   box-shadow: 0 0 0 1px var(--accent-dim) inset;
+}
+
+.link-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  border-radius: 14px 0 0 14px;
+  background: linear-gradient(180deg, #1dd3b0, #60a5fa);
+  opacity: 0.6;
+}
+
+.link-card {
+  position: relative;
+  padding-left: 14px;
 }
 
 .links-panel.list .link-card {
@@ -767,7 +795,7 @@ button.ghost-danger {
   right: -460px;
   width: min(440px, 100vw);
   height: 100vh;
-  background: var(--bg2);
+  background: linear-gradient(180deg, rgba(9, 20, 33, 0.98), rgba(13, 26, 40, 0.98));
   border-left: 1px solid var(--border2);
   z-index: 80;
   display: flex;
@@ -839,8 +867,8 @@ button.ghost-danger {
   right: 22px;
   bottom: 22px;
   z-index: 95;
-  border-radius: 10px;
-  padding: 10px 13px;
+  border-radius: 14px;
+  padding: 11px 14px;
   font-size: 13px;
   font-weight: 600;
   border: 1px solid transparent;
@@ -849,14 +877,14 @@ button.ghost-danger {
 
 .toast-info {
   background: var(--blue-dim);
-  color: var(--blue);
+  color: #8cc6ff;
   border-color: rgba(96, 165, 250, 0.3);
 }
 
 .toast-ok {
-  background: var(--green-dim);
-  color: var(--green);
-  border-color: rgba(52, 211, 153, 0.28);
+  background: var(--accent-dim);
+  color: var(--accent);
+  border-color: var(--accent-border);
 }
 
 .toast-err {
