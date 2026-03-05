@@ -61,7 +61,22 @@ type ViewMode = "card" | "list";
 type StatusFilter = "all" | LinkStatus;
 type ThemeMode = "dark" | "light";
 
-const CATEGORY_MENU = ["테크/IT", "경제/금융", "AI/미래", "과학", "정치/사회"] as const;
+const CATEGORY_BASE_MENU = [
+  "AI/머신러닝",
+  "개발/프로그래밍",
+  "데이터/분석",
+  "보안/인프라",
+  "제품/디자인",
+  "스타트업/비즈니스",
+  "투자/금융",
+  "경제/정책",
+  "과학/기술",
+  "헬스/바이오",
+  "정치/사회",
+  "교육/커리어",
+  "문화/라이프",
+  "기타"
+] as const;
 
 interface LinkDraft {
   note: string;
@@ -232,7 +247,7 @@ export default function App() {
 
   const [newUrl, setNewUrl] = useState("");
   const [newTitle, setNewTitle] = useState("");
-  const [newCategory, setNewCategory] = useState("테크/IT");
+  const [newCategory, setNewCategory] = useState("");
   const [newNote, setNewNote] = useState("");
   const [newStatus, setNewStatus] = useState<LinkStatus>("unread");
   const [newCollectionId, setNewCollectionId] = useState("");
@@ -767,7 +782,7 @@ export default function App() {
         note: newNote.trim() || null,
         status: newStatus,
         collection_id: newCollectionId || null,
-        category: newCategory
+        category: newCategory || null
       };
 
       const { data, error }: { data: any; error: any } = await withTimeout(
@@ -812,7 +827,7 @@ export default function App() {
 
       setNewUrl("");
       setNewTitle("");
-      setNewCategory("테크/IT");
+      setNewCategory("");
       setNewNote("");
       setNewStatus("unread");
       setNewCollectionId("");
@@ -1000,12 +1015,19 @@ export default function App() {
     [links]
   );
 
+  const categoryMenu = useMemo(() => {
+    const fromLinks = links
+      .map((item) => (item.category || "").trim())
+      .filter((value) => value.length > 0);
+    return Array.from(new Set([...CATEGORY_BASE_MENU, ...fromLinks]));
+  }, [links]);
+
   const categoryStats = useMemo(() => {
-    return CATEGORY_MENU.map((category) => ({
+    return categoryMenu.map((category) => ({
       category,
       count: links.filter((item) => item.category === category).length
     }));
-  }, [links]);
+  }, [categoryMenu, links]);
 
   const readingCount = useMemo(() => links.filter((item) => item.status === "reading").length, [links]);
   const doneCount = useMemo(() => links.filter((item) => item.status === "done").length, [links]);
@@ -1681,11 +1703,12 @@ export default function App() {
                   <label>
                     카테고리
                     <select value={newCategory} onChange={(event) => setNewCategory(event.target.value)}>
-                      <option value="테크/IT">테크/IT</option>
-                      <option value="경제/금융">경제/금융</option>
-                      <option value="AI/미래">AI/미래</option>
-                      <option value="과학">과학</option>
-                      <option value="정치/사회">정치/사회</option>
+                      <option value="">자동 분류 (AI)</option>
+                      {categoryMenu.map((category) => (
+                        <option key={category} value={category}>
+                          {category}
+                        </option>
+                      ))}
                     </select>
                   </label>
 
