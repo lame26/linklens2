@@ -515,17 +515,18 @@ button.ghost-danger {
 .link-card {
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: var(--surface2);
+  background: linear-gradient(165deg, rgba(255, 255, 255, 0.02), rgba(139, 123, 255, 0.06)), var(--surface2);
   padding: 12px;
   display: grid;
   gap: 8px;
   cursor: pointer;
-  transition: border-color 0.15s ease, transform 0.15s ease;
+  transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
 }
 
 .link-card:hover {
   border-color: var(--border2);
   transform: translateY(-1px);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.22);
 }
 
 .link-card.selected {
@@ -675,12 +676,45 @@ button.ghost-danger {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
+  margin-top: 2px;
 }
 
-.card-actions button {
-  padding: 6px 10px;
-  font-size: 12px;
-  font-weight: 600;
+.action-btn {
+  min-width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: var(--surface3);
+  color: var(--text2);
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.action-btn:hover {
+  border-color: var(--accent-border);
+  color: var(--text);
+  background: #343442;
+}
+
+.action-btn.is-active {
+  color: var(--amber);
+  border-color: rgba(251, 191, 36, 0.35);
+  background: var(--amber-dim);
+}
+
+.action-btn.warn {
+  color: var(--blue);
+  border-color: rgba(96, 165, 250, 0.35);
+  background: var(--blue-dim);
+}
+
+.action-btn.danger {
+  color: var(--red);
+  border-color: rgba(248, 113, 113, 0.35);
+  background: var(--red-dim);
 }
 
 .keywords {
@@ -692,6 +726,12 @@ button.ghost-danger {
 .error-text {
   margin: 0;
   color: var(--red);
+  font-size: 12px;
+}
+
+.ok-text {
+  margin: 0;
+  color: var(--green);
   font-size: 12px;
 }
 
@@ -906,7 +946,7 @@ button.ghost-danger {
     justify-content: flex-start;
   }
 
-  .card-actions button {
+  .action-btn {
     width: auto;
   }
 

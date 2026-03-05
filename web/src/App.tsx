@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "./lib/supabase";
 import type { Collection, LinkItem, LinkStatus } from "./lib/types";
@@ -31,6 +31,29 @@ const API_BASE_URL = (() => {
 
 function toApiUrl(pathname: string): string {
   return API_BASE_URL ? `${API_BASE_URL}${pathname}` : pathname;
+}
+
+const REQUEST_TIMEOUT_MS = 25000;
+
+async function withTimeout<T>(promise: PromiseLike<T>, timeoutMs: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${label} 요청 시간 초과`)), timeoutMs);
+      })
+    ]);
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  }
+}
+
+async function parseResponseError(response: Response): Promise<string> {
+  const text = (await response.text()).trim();
+  return text || `HTTP ${response.status}`;
 }
 
 type SortMode = "newest" | "oldest" | "rating";
@@ -78,6 +101,11 @@ function getUrlHostLabel(rawUrl: string): string {
   } catch {
     return rawUrl;
   }
+}
+
+function getLinkDisplayLabel(link: Pick<LinkItem, "title" | "url">): string {
+  const base = (link.title || getUrlHostLabel(link.url)).trim();
+  return base.length > 32 ? `${base.slice(0, 32)}...` : base;
 }
 
 function normalizeTags(raw: string): string[] {
@@ -205,19 +233,34 @@ export default function App() {
   const [collectionColor, setCollectionColor] = useState("#5f7df3");
   const [selectedLinkId, setSelectedLinkId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ kind: "info" | "ok" | "err"; message: string } | null>(null);
+  const [authNotice, setAuthNotice] = useState<string | null>(null);
 
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const authInitDoneRef = useRef(false);
 
   const selectedLink = useMemo(() => links.find((item) => item.id === selectedLinkId) || null, [links, selectedLinkId]);
   const selectedDraft = selectedLink ? drafts[selectedLink.id] || getLinkDraft(selectedLink) : null;
 
   useEffect(() => {
     void supabase.auth.getSession().then(({ data }) => {
+      authInitDoneRef.current = true;
       setSession(data.session ?? null);
       setAuthReady(true);
     });
 
-    const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    const { data } = supabase.auth.onAuthStateChange(async (event, nextSession) => {
+      if (event === "SIGNED_OUT" && !nextSession) {
+        const { data: latest } = await supabase.auth.getSession();
+        setSession(latest.session ?? null);
+        setAuthReady(true);
+        return;
+      }
+
+      if (!authInitDoneRef.current && event === "INITIAL_SESSION") {
+        authInitDoneRef.current = true;
+      }
+
       setSession(nextSession);
       setAuthReady(true);
     });
@@ -241,6 +284,28 @@ export default function App() {
       setSelectedLinkId(null);
     }
   }, [links, selectedLinkId]);
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent): void {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        searchInputRef.current?.focus();
+        return;
+      }
+
+      if (!selectedLink) {
+        return;
+      }
+
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setSelectedLinkId(null);
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selectedLink]);
 
   const loadCollections = useCallback(async () => {
     if (!session) {
@@ -317,35 +382,73 @@ export default function App() {
     setLinks(mapped);
   }, [session, showTrash, statusFilter, collectionFilter, search, sortMode]);
 
-  const runAiEnrichmentInBackground = useCallback(
-    async (linkId: string) => {
+  const requestAiAnalysis = useCallback(
+    async (linkId: string): Promise<void> => {
       if (!session) {
-        return;
+        throw new Error("세션이 만료되었습니다. 다시 로그인해 주세요.");
       }
 
-      try {
-        const response = await fetch(toApiUrl("/api/v1/ai/analyze-link"), {
+      const response = await withTimeout(
+        fetch(toApiUrl("/api/v1/ai/analyze-link"), {
           method: "POST",
           headers: {
             "content-type": "application/json",
             authorization: `Bearer ${session.access_token}`
           },
           body: JSON.stringify({ linkId })
-        });
+        }),
+        REQUEST_TIMEOUT_MS,
+        "AI 분석"
+      );
 
-        if (!response.ok) {
-          throw new Error(await response.text());
+      if (!response.ok) {
+        const message = await parseResponseError(response);
+        throw new Error(message);
+      }
+    },
+    [session]
+  );
+
+  const runAiWithRetry = useCallback(
+    async (linkId: string, retryCount = 1): Promise<void> => {
+      let attempt = 0;
+      while (true) {
+        try {
+          await requestAiAnalysis(linkId);
+          return;
+        } catch (error) {
+          attempt += 1;
+          const message = error instanceof Error ? error.message : String(error);
+          const mayRetry =
+            message.includes("요청 시간 초과") ||
+            message.includes("Failed to fetch") ||
+            message.includes("NetworkError") ||
+            /\b429\b/.test(message) ||
+            /\b5\d\d\b/.test(message);
+          if (!mayRetry || attempt > retryCount) {
+            throw error;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 900));
         }
-        setToast({ kind: "ok", message: "AI 분석 완료: 제목/요약/태그를 자동 업데이트했어요." });
+      }
+    },
+    [requestAiAnalysis]
+  );
+
+  const runAiEnrichmentInBackground = useCallback(
+    async (link: Pick<LinkItem, "id" | "title" | "url">) => {
+      try {
+        await runAiWithRetry(link.id, 1);
+        setToast({ kind: "ok", message: `AI 분석 완료: ${getLinkDisplayLabel(link)}` });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         setErrorMessage(`AI 자동 분석 실패: ${message}`);
-        setToast({ kind: "err", message: "AI 자동 분석 실패. 카드의 재시도 버튼으로 다시 실행하세요." });
+        setToast({ kind: "err", message: `AI 분석 실패: ${getLinkDisplayLabel(link)} (재시도 가능)` });
       } finally {
         await loadLinks();
       }
     },
-    [session, loadLinks]
+    [runAiWithRetry, loadLinks]
   );
 
   useEffect(() => {
@@ -411,14 +514,24 @@ export default function App() {
     event.preventDefault();
     setAuthLoading(true);
     setErrorMessage(null);
+    setAuthNotice(null);
 
     try {
       if (authMode === "signup") {
-        const { error } = await supabase.auth.signUp({ email, password });
+        const { data, error } = await supabase.auth.signUp({ email, password });
         if (error) {
           throw error;
         }
-        setErrorMessage("회원가입 완료. 이메일 인증 후 로그인해 주세요.");
+
+        const duplicateSignup = Array.isArray(data.user?.identities) && data.user?.identities.length === 0;
+        if (duplicateSignup) {
+          setAuthNotice("이미 가입된 이메일입니다. 로그인으로 전환합니다.");
+          setAuthMode("login");
+          return;
+        }
+
+        setAuthNotice("회원가입 완료. 이메일 인증 후 로그인해 주세요.");
+        setAuthMode("login");
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) {
@@ -434,8 +547,10 @@ export default function App() {
   }
 
   async function handleLogout() {
+    setSelectedLinkId(null);
     await supabase.auth.signOut();
     setLinks([]);
+    setDrafts({});
   }
 
   async function handleCreateCollection(event: React.FormEvent) {
@@ -486,13 +601,17 @@ export default function App() {
         collection_id: newCollectionId || null
       };
 
-      const { data, error } = await supabase
-        .from("links")
-        .insert([payload])
-        .select(
-          "id, url, title, note, status, rating, is_favorite, category, summary, keywords, collection_id, ai_state, ai_error, created_at, deleted_at"
-        )
-        .single();
+      const { data, error }: { data: any; error: any } = await withTimeout(
+        supabase
+          .from("links")
+          .insert([payload])
+          .select(
+            "id, url, title, note, status, rating, is_favorite, category, summary, keywords, collection_id, ai_state, ai_error, created_at, deleted_at"
+          )
+          .single(),
+        REQUEST_TIMEOUT_MS,
+        "링크 저장"
+      );
 
       if (error) {
         throw error;
@@ -518,9 +637,9 @@ export default function App() {
         tags: normalizeTags(newTags)
       };
 
-      setLinks((prev) => [ { ...optimistic, ai_state: "pending", ai_error: null }, ...prev ]);
+      setLinks((prev) => [{ ...optimistic, ai_state: "pending", ai_error: null }, ...prev]);
       await syncLinkTags(data.id, newTags);
-      setToast({ kind: "info", message: "링크 저장됨. 백그라운드에서 AI 분석 중..." });
+      setToast({ kind: "info", message: `저장됨: ${getLinkDisplayLabel(optimistic)} (AI 분석 중)` });
 
       setNewUrl("");
       setNewNote("");
@@ -528,7 +647,7 @@ export default function App() {
       setNewCollectionId("");
       setNewTags("");
 
-      void runAiEnrichmentInBackground(data.id);
+      void runAiEnrichmentInBackground(optimistic);
       void loadLinks();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -609,26 +728,14 @@ export default function App() {
 
     try {
       setLinks((prev) => prev.map((item) => (item.id === link.id ? { ...item, ai_state: "pending", ai_error: null } : item)));
-
-      const response = await fetch(toApiUrl("/api/v1/ai/analyze-link"), {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          authorization: `Bearer ${session.access_token}`
-        },
-        body: JSON.stringify({ linkId: link.id })
-      });
-
-      if (!response.ok) {
-        throw new Error(await response.text());
-      }
+      await runAiWithRetry(link.id, 1);
 
       await loadLinks();
-      setToast({ kind: "ok", message: "AI 분석이 완료되었습니다." });
+      setToast({ kind: "ok", message: `AI 분석 완료: ${getLinkDisplayLabel(link)}` });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setErrorMessage(`AI 분석 실패: ${message}`);
-      setToast({ kind: "err", message: "AI 분석 실패. 잠시 후 재시도해 주세요." });
+      setToast({ kind: "err", message: `AI 분석 실패: ${getLinkDisplayLabel(link)}` });
       await loadLinks();
     } finally {
       setSavingLinkId(null);
@@ -748,10 +855,19 @@ export default function App() {
             </button>
           </form>
 
-          <button type="button" className="ghost" onClick={() => setAuthMode(authMode === "login" ? "signup" : "login")}>
+          <button
+            type="button"
+            className="ghost"
+            onClick={() => {
+              setAuthMode(authMode === "login" ? "signup" : "login");
+              setAuthNotice(null);
+              setErrorMessage(null);
+            }}
+          >
             {authMode === "login" ? "회원가입으로 전환" : "로그인으로 전환"}
           </button>
 
+          {authNotice && <p className="ok-text">{authNotice}</p>}
           {errorMessage && <p className="error-text">{errorMessage}</p>}
         </section>
       </main>
@@ -868,8 +984,9 @@ export default function App() {
           <h2 className="page-title">{showTrash ? "휴지통" : "내 링크 라이브러리"}</h2>
           <div className="topbar-right">
             <input
+              ref={searchInputRef}
               className="search-input"
-              placeholder="URL, 제목, 메모 검색"
+              placeholder="URL, 제목, 메모 검색 (Ctrl/Cmd+K)"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
             />
@@ -1076,79 +1193,93 @@ export default function App() {
                     <div className="card-actions">
                       <button
                         type="button"
-                        className="ghost"
+                        className="action-btn"
+                        aria-label="원문 열기"
+                        title="원문 열기"
                         onClick={(event) => {
                           event.stopPropagation();
                           window.open(link.url, "_blank", "noopener,noreferrer");
                         }}
                       >
-                        열기
+                        ↗
                       </button>
                       <button
                         type="button"
-                        className="ghost ghost-strong"
+                        className={`action-btn ${link.is_favorite ? "is-active" : ""}`}
+                        aria-label={link.is_favorite ? "즐겨찾기 해제" : "즐겨찾기"}
+                        title={link.is_favorite ? "즐겨찾기 해제" : "즐겨찾기"}
                         onClick={(event) => {
                           event.stopPropagation();
                           void toggleFavorite(link);
                         }}
                       >
-                        {link.is_favorite ? "즐겨찾기 해제" : "즐겨찾기"}
+                        ★
                       </button>
                       <button
                         type="button"
-                        className="ghost"
+                        className="action-btn"
+                        aria-label="상세 편집"
+                        title="상세 편집"
                         onClick={(event) => {
                           event.stopPropagation();
                           openLinkDetail(link);
                         }}
                       >
-                        편집
+                        ✎
                       </button>
                       <button
                         type="button"
-                        className="ghost"
+                        className="action-btn"
+                        aria-label="AI 분석"
+                        title="AI 분석"
                         onClick={(event) => {
                           event.stopPropagation();
                           void runAiAnalysis(link);
                         }}
                         disabled={savingLinkId === link.id}
                       >
-                        AI 분석
+                        AI
                       </button>
                       {(link.ai_state === "failed" || link.ai_error) && (
                         <button
                           type="button"
-                          className="ghost"
+                          className="action-btn warn"
+                          aria-label="AI 재시도"
+                          title="AI 재시도"
                           onClick={(event) => {
                             event.stopPropagation();
                             void runAiAnalysis(link);
                           }}
                           disabled={savingLinkId === link.id}
                         >
-                          재시도
+                          ⟳
                         </button>
                       )}
                       {showTrash ? (
                         <button
                           type="button"
-                          className="ghost ghost-strong"
+                          className="action-btn"
+                          aria-label="복원"
+                          title="복원"
                           onClick={(event) => {
                             event.stopPropagation();
                             void setLinkDeleted(link.id, false);
                           }}
                         >
-                          복원
+                          ↺
                         </button>
                       ) : (
                         <button
                           type="button"
-                          className="ghost ghost-danger"
+                          className="action-btn danger"
+                          aria-label="삭제"
+                          title="삭제"
                           onClick={(event) => {
                             event.stopPropagation();
                             void setLinkDeleted(link.id, true);
                           }}
                         >
-                          삭제
+                          ⌫
                         </button>
                       )}
                     </div>
@@ -1163,7 +1294,19 @@ export default function App() {
           onClick={() => setSelectedLinkId(null)}
           aria-hidden={!selectedLink}
         />
-        <aside className={`detail-panel ${selectedLink ? "open" : ""}`} aria-hidden={!selectedLink}>
+        <aside
+          className={`detail-panel ${selectedLink ? "open" : ""}`}
+          aria-hidden={!selectedLink}
+          onKeyDown={(event) => {
+            if (!selectedLink) {
+              return;
+            }
+            if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+              event.preventDefault();
+              void updateLink(selectedLink);
+            }
+          }}
+        >
           {selectedLink && selectedDraft && (
             <>
               <div className="detail-head">
