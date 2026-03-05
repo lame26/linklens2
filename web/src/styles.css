@@ -1,17 +1,17 @@
 :root {
-  --bg: #060a0f;
-  --bg2: #0e1723;
-  --surface: #141f2f;
-  --surface2: #1a2738;
-  --surface3: #22354d;
-  --border: #2d4360;
-  --border2: #3c5d86;
-  --text: #f6fbff;
-  --text2: #b3c3d6;
-  --text3: #7f95ae;
-  --accent: #1dd3b0;
-  --accent-dim: rgba(29, 211, 176, 0.16);
-  --accent-border: rgba(29, 211, 176, 0.34);
+  --bg: #0b0b0f;
+  --bg2: #111217;
+  --surface: #151720;
+  --surface2: #1a1d28;
+  --surface3: #232735;
+  --border: #22242e;
+  --border2: #2c3040;
+  --text: #ffffff;
+  --text2: #a1a1aa;
+  --text3: #6b7280;
+  --accent: #8b5cf6;
+  --accent-dim: rgba(139, 92, 246, 0.18);
+  --accent-border: rgba(139, 92, 246, 0.44);
   --green: #34d399;
   --green-dim: rgba(52, 211, 153, 0.13);
   --blue: #60a5fa;
@@ -20,10 +20,10 @@
   --amber-dim: rgba(248, 193, 77, 0.14);
   --red: #f87171;
   --red-dim: rgba(248, 113, 113, 0.14);
-  --radius: 14px;
-  --radius-sm: 10px;
-  --radius-lg: 20px;
-  --shadow: 0 8px 22px rgba(3, 10, 20, 0.35), 0 18px 46px rgba(0, 0, 0, 0.3);
+  --radius: 12px;
+  --radius-sm: 8px;
+  --radius-lg: 16px;
+  --shadow: 0 6px 18px rgba(0, 0, 0, 0.32), 0 18px 34px rgba(0, 0, 0, 0.28);
 }
 
 * {
@@ -38,10 +38,10 @@ body,
 }
 
 body {
-  font-family: "Geist", "SUIT Variable", "Pretendard", "Noto Sans KR", sans-serif;
+  font-family: "Inter", "Pretendard", system-ui, sans-serif;
   background:
-    radial-gradient(circle at 12% 0%, rgba(29, 211, 176, 0.14), transparent 34%),
-    radial-gradient(circle at 90% 8%, rgba(96, 165, 250, 0.16), transparent 40%),
+    radial-gradient(circle at 14% 0%, rgba(139, 92, 246, 0.16), transparent 34%),
+    radial-gradient(circle at 84% 8%, rgba(59, 130, 246, 0.12), transparent 38%),
     var(--bg);
   color: var(--text);
   line-height: 1.45;
@@ -140,17 +140,17 @@ textarea {
 button {
   border: 0;
   border-radius: var(--radius-sm);
-  padding: 10px 13px;
-  background: linear-gradient(135deg, #12c8a5, #24b6f1);
-  color: #042726;
+  padding: 9px 12px;
+  background: var(--accent);
+  color: #fff;
   font-weight: 600;
   transition: transform 0.12s, opacity 0.12s, box-shadow 0.14s;
 }
 
 button:hover {
   transform: translateY(-1px);
-  opacity: 0.93;
-  box-shadow: 0 10px 24px rgba(36, 182, 241, 0.24);
+  opacity: 0.95;
+  box-shadow: 0 10px 24px rgba(124, 58, 237, 0.22);
 }
 
 button:disabled {
@@ -188,7 +188,7 @@ button.ghost-danger {
 
 .sidebar {
   width: 256px;
-  background: linear-gradient(180deg, rgba(9, 20, 33, 0.95), rgba(9, 20, 33, 0.84));
+  background: #111217;
   border-right: 1px solid var(--border);
   position: fixed;
   left: 0;
@@ -204,6 +204,13 @@ button.ghost-danger {
   border-bottom: 1px solid var(--border);
 }
 
+.logo-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
 .eyebrow {
   margin: 0 0 3px;
   font-size: 10px;
@@ -215,9 +222,8 @@ button.ghost-danger {
 
 .logo-name {
   margin: 0;
-  font-family: "Instrument Serif", serif;
-  font-size: 23px;
-  font-weight: 400;
+  font-size: 18px;
+  font-weight: 600;
 }
 
 .sidebar-scroll {
@@ -319,6 +325,12 @@ button.ghost-danger {
   padding: 10px;
 }
 
+.plan-name {
+  margin: 0 0 6px;
+  font-size: 12px;
+  color: var(--text2);
+}
+
 .plan-row {
   display: flex;
   justify-content: space-between;
@@ -355,14 +367,14 @@ button.ghost-danger {
   content: "";
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle at 80% 18%, rgba(29, 211, 176, 0.1), transparent 36%);
+  background: radial-gradient(circle at 80% 18%, rgba(139, 92, 246, 0.08), transparent 36%);
   pointer-events: none;
 }
 
 .topbar {
-  height: 66px;
+  height: 64px;
   border-bottom: 1px solid var(--border);
-  background: rgba(8, 15, 23, 0.88);
+  background: rgba(11, 11, 15, 0.9);
   backdrop-filter: blur(14px);
   position: sticky;
   top: 0;
@@ -375,9 +387,8 @@ button.ghost-danger {
 
 .page-title {
   margin: 0;
-  font-family: "Instrument Serif", serif;
-  font-size: 24px;
-  font-weight: 400;
+  font-size: 22px;
+  font-weight: 600;
 }
 
 .topbar-right {
@@ -387,8 +398,32 @@ button.ghost-danger {
   gap: 8px;
 }
 
+.slim-btn {
+  height: 36px;
+  padding: 0 12px;
+}
+
+.icon-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #151720;
+  color: var(--text2);
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+}
+
+.icon-btn.active,
+.icon-btn:hover {
+  border-color: var(--accent-border);
+  color: var(--accent);
+  background: rgba(139, 92, 246, 0.16);
+}
+
 .search-input {
-  width: 320px;
+  width: 260px;
   background: var(--surface2);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -402,17 +437,52 @@ button.ghost-danger {
   gap: 14px;
 }
 
+.toolbar-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip {
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: #151720;
+  color: var(--text2);
+  font-size: 13px;
+}
+
+.chip.active {
+  background: rgba(139, 92, 246, 0.2);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.view-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .stats-grid {
   display: grid;
   gap: 10px;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .stat {
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: linear-gradient(160deg, rgba(29, 211, 176, 0.09), rgba(20, 31, 47, 0.95));
-  padding: 10px 12px;
+  background: #151720;
+  padding: 18px 16px;
   display: grid;
   gap: 4px;
 }
@@ -423,7 +493,7 @@ button.ghost-danger {
 }
 
 .stat strong {
-  font-size: 24px;
+  font-size: 28px;
   line-height: 1.1;
   font-weight: 700;
 }
@@ -431,7 +501,7 @@ button.ghost-danger {
 .panel {
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: linear-gradient(155deg, rgba(20, 31, 47, 0.98), rgba(26, 39, 56, 0.95));
+  background: #151720;
   padding: 14px;
   box-shadow: var(--shadow);
 }
@@ -443,7 +513,7 @@ button.ghost-danger {
 
 .panel-accent {
   border-color: var(--accent-border);
-  background: linear-gradient(180deg, rgba(29, 211, 176, 0.12), rgba(29, 211, 176, 0.04)), var(--surface);
+  background: linear-gradient(180deg, rgba(139, 92, 246, 0.12), rgba(139, 92, 246, 0.05)), var(--surface);
 }
 
 .section-subtitle {
@@ -502,18 +572,33 @@ button.ghost-danger {
   border: 1px dashed var(--border2);
   background: var(--surface2);
   border-radius: var(--radius);
-  padding: 14px;
+  padding: 26px 14px;
+  text-align: center;
 }
 
 .empty-state strong {
   display: block;
   margin-bottom: 4px;
+  font-size: 16px;
 }
 
 .empty-state p {
   margin: 0;
   color: var(--text3);
   font-size: 13px;
+}
+
+.empty-icon {
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 10px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: #1a1d28;
+  color: var(--text3);
+  display: grid;
+  place-items: center;
+  font-size: 24px;
 }
 
 .links-panel.card {
@@ -553,7 +638,7 @@ button.ghost-danger {
   inset: 0 auto 0 0;
   width: 3px;
   border-radius: 14px 0 0 14px;
-  background: linear-gradient(180deg, #1dd3b0, #60a5fa);
+  background: linear-gradient(180deg, #8b5cf6, #7c3aed);
   opacity: 0.6;
 }
 
@@ -724,7 +809,7 @@ button.ghost-danger {
 .action-btn:hover {
   border-color: var(--accent-border);
   color: var(--text);
-  background: #343442;
+  background: #262a38;
 }
 
 .action-btn.is-active {
@@ -895,7 +980,7 @@ button.ghost-danger {
 
 @media (max-width: 1140px) {
   .stats-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .search-input {
@@ -943,6 +1028,19 @@ button.ghost-danger {
     padding: 12px;
   }
 
+  .toolbar-panel {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .chip-row {
+    width: 100%;
+  }
+
+  .view-toggle {
+    justify-content: flex-end;
+  }
+
   .stats-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -964,6 +1062,12 @@ button.ghost-danger {
   button,
   button.ghost {
     width: 100%;
+  }
+
+  .icon-btn,
+  .chip,
+  .action-btn {
+    width: auto;
   }
 
   .link-card header {

@@ -238,6 +238,7 @@ export default function App() {
 
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const newUrlInputRef = useRef<HTMLInputElement | null>(null);
   const authInitDoneRef = useRef(false);
 
   const selectedLink = useMemo(() => links.find((item) => item.id === selectedLinkId) || null, [links, selectedLinkId]);
@@ -821,8 +822,7 @@ export default function App() {
     () => ({
       total: links.length,
       unread: links.filter((item) => item.status === "unread").length,
-      reading: links.filter((item) => item.status === "reading").length,
-      done: links.filter((item) => item.status === "done").length,
+      aiDone: links.filter((item) => item.ai_state === "success").length,
       favorite: links.filter((item) => item.is_favorite).length
     }),
     [links]
@@ -838,6 +838,9 @@ export default function App() {
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5);
   }, [links]);
+
+  const readingCount = useMemo(() => links.filter((item) => item.status === "reading").length, [links]);
+  const doneCount = useMemo(() => links.filter((item) => item.status === "done").length, [links]);
 
   if (!authReady) {
     return <main className="app-shell">세션 확인 중...</main>;
@@ -895,9 +898,14 @@ export default function App() {
     <div className="app-layout">
       <aside className="sidebar">
         <div className="logo">
-          <div>
+          <div className="logo-row">
+            <div>
             <p className="eyebrow">Reading Archive</p>
-            <h1 className="logo-name">LinkPocket</h1>
+              <h1 className="logo-name">LinkLens</h1>
+            </div>
+            <button type="button" className="icon-btn" aria-label="테마 토글" title="테마 토글 (준비중)">
+              ◐
+            </button>
           </div>
         </div>
 
@@ -932,7 +940,7 @@ export default function App() {
                 setStatusFilter("reading");
               }}
             >
-              읽음 <span className="nav-count">{headerStats.reading}</span>
+              읽음 <span className="nav-count">{readingCount}</span>
             </button>
             <button
               type="button"
@@ -942,7 +950,7 @@ export default function App() {
                 setStatusFilter("done");
               }}
             >
-              완료 <span className="nav-count">{headerStats.done}</span>
+              완료 <span className="nav-count">{doneCount}</span>
             </button>
             <button type="button" className={`nav-btn ${showTrash ? "active" : ""}`} onClick={() => setShowTrash((prev) => !prev)}>
               휴지통 <span className="nav-count">{showTrash ? links.length : 0}</span>
@@ -985,12 +993,13 @@ export default function App() {
 
         <div className="sidebar-footer">
           <div className="plan-card">
+            <p className="plan-name">Free 플랜</p>
             <div className="plan-row">
               <span>현재 저장량</span>
-              <strong>{headerStats.total} / 30</strong>
+              <strong>{headerStats.total} / 무제한</strong>
             </div>
             <div className="plan-bar-bg">
-              <div className="plan-bar" style={{ width: `${Math.min(100, Math.round((headerStats.total / 30) * 100))}%` }} />
+              <div className="plan-bar" style={{ width: "24%" }} />
             </div>
           </div>
         </div>
@@ -998,20 +1007,41 @@ export default function App() {
 
       <main className="main">
         <header className="topbar">
-          <h2 className="page-title">{showTrash ? "휴지통" : "내 링크 라이브러리"}</h2>
+          <h2 className="page-title">{showTrash ? "휴지통" : "전체 기사"}</h2>
           <div className="topbar-right">
             <input
               ref={searchInputRef}
               className="search-input"
-              placeholder="URL, 제목, 메모 검색 (Ctrl/Cmd+K)"
+              placeholder="검색어 입력"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
             />
-            <button type="button" className="ghost" onClick={() => setViewMode(viewMode === "card" ? "list" : "card")}>
-              {viewMode === "card" ? "카드" : "리스트"}
+            <button
+              type="button"
+              className="ghost slim-btn"
+              onClick={() => {
+                setSearch("");
+                setStatusFilter("all");
+                setCollectionFilter("all");
+                setSortMode("newest");
+              }}
+            >
+              초기화
+            </button>
+            <button type="button" className="icon-btn" aria-label="도움말" title="도움말">
+              ?
             </button>
             <button type="button" className="ghost" onClick={() => void loadLinks()}>
               새로고침
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                newUrlInputRef.current?.focus();
+                newUrlInputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+              }}
+            >
+              + 링크 추가
             </button>
             <button type="button" className="ghost" onClick={handleLogout} disabled={logoutLoading}>
               {logoutLoading ? "로그아웃 중..." : "로그아웃"}
@@ -1030,17 +1060,54 @@ export default function App() {
               <strong>{headerStats.unread}</strong>
             </article>
             <article className="stat">
-              <span>읽음</span>
-              <strong>{headerStats.reading}</strong>
-            </article>
-            <article className="stat">
-              <span>완료</span>
-              <strong>{headerStats.done}</strong>
+              <span>AI 요약 완료</span>
+              <strong>{headerStats.aiDone}</strong>
             </article>
             <article className="stat">
               <span>즐겨찾기</span>
               <strong>{headerStats.favorite}</strong>
             </article>
+          </section>
+
+          <section className="panel toolbar-panel">
+            <div className="chip-row">
+              <button type="button" className={`chip ${sortMode === "newest" ? "active" : ""}`} onClick={() => setSortMode("newest")}>
+                최신순
+              </button>
+              <button type="button" className={`chip ${sortMode === "oldest" ? "active" : ""}`} onClick={() => setSortMode("oldest")}>
+                오래된순
+              </button>
+              <button type="button" className={`chip ${sortMode === "rating" ? "active" : ""}`} onClick={() => setSortMode("rating")}>
+                별점순
+              </button>
+              <button
+                type="button"
+                className={`chip ${statusFilter === "unread" ? "active" : ""}`}
+                onClick={() => setStatusFilter((prev) => (prev === "unread" ? "all" : "unread"))}
+              >
+                미읽음만
+              </button>
+            </div>
+            <div className="view-toggle">
+              <button
+                type="button"
+                className={`icon-btn ${viewMode === "card" ? "active" : ""}`}
+                aria-label="그리드 보기"
+                title="그리드 보기"
+                onClick={() => setViewMode("card")}
+              >
+                ▦
+              </button>
+              <button
+                type="button"
+                className={`icon-btn ${viewMode === "list" ? "active" : ""}`}
+                aria-label="리스트 보기"
+                title="리스트 보기"
+                onClick={() => setViewMode("list")}
+              >
+                ☰
+              </button>
+            </div>
           </section>
 
           <section className="panel panel-accent">
@@ -1049,7 +1116,13 @@ export default function App() {
             <form onSubmit={handleCreateLink} className="grid-form">
               <label className="full">
                 URL
-                <input value={newUrl} onChange={(event) => setNewUrl(event.target.value)} placeholder="https://..." required />
+                <input
+                  ref={newUrlInputRef}
+                  value={newUrl}
+                  onChange={(event) => setNewUrl(event.target.value)}
+                  placeholder="https://..."
+                  required
+                />
               </label>
 
               <p className="muted full">제목/요약/태그/카테고리는 저장 후 AI가 자동 생성한다.</p>
@@ -1145,8 +1218,11 @@ export default function App() {
 
             {!loadingLinks && links.length === 0 && (
               <div className="empty-state">
-                <strong>조건에 맞는 링크가 없다.</strong>
-                <p>필터를 완화하거나 새 링크를 추가해보자.</p>
+                <div className="empty-icon" aria-hidden>
+                  ▤
+                </div>
+                <strong>아직 저장된 기사가 없습니다</strong>
+                <p>"링크 추가" 버튼으로 기사를 저장해보세요</p>
               </div>
             )}
 
