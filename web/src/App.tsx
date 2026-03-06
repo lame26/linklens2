@@ -675,6 +675,7 @@ export default function App() {
   const [themeMode, setThemeMode] = useState<ThemeMode>("dark");
   const [mainTab, setMainTab] = useState<MainTab>("library");
   const [fontScaleMode, setFontScaleMode] = useState<FontScaleMode>("normal");
+  const [autoAnalyzeOnImport, setAutoAnalyzeOnImport] = useState(false);
 
   const [newUrl, setNewUrl] = useState("");
   const [newTitle, setNewTitle] = useState("");
@@ -782,6 +783,13 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const saved = typeof window !== "undefined" ? window.localStorage.getItem("linkpocket-import-auto-ai") : null;
+    if (saved === "1") {
+      setAutoAnalyzeOnImport(true);
+    }
+  }, []);
+
+  useEffect(() => {
     if (typeof document !== "undefined") {
       document.documentElement.dataset.theme = themeMode;
     }
@@ -798,6 +806,12 @@ export default function App() {
       window.localStorage.setItem("linklens-font-scale", fontScaleMode);
     }
   }, [fontScaleMode]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("linkpocket-import-auto-ai", autoAnalyzeOnImport ? "1" : "0");
+    }
+  }, [autoAnalyzeOnImport]);
 
   useEffect(() => {
     if (mainTab !== "library") {
@@ -865,7 +879,7 @@ export default function App() {
     setCollections((data || []) as Collection[]);
   }, [session]);
 
-  const loadLinks = useCallback(async () => {
+  const loadLinks = useCallback(async (options?: { silent?: boolean; skipCounts?: boolean }) => {
     if (!session) {
       setLinks([]);
       setCategoryCounts(createEmptyCategoryCounts());
@@ -881,102 +895,134 @@ export default function App() {
       return;
     }
 
-    setLoadingLinks(true);
+    const silent = options?.silent === true;
+    const skipCounts = options?.skipCounts === true;
+
+    if (!silent) {
+      setLoadingLinks(true);
+    }
     setErrorMessage(null);
 
-    let query = supabase
-      .from("links")
-      .select(
-        "id, url, title, note, status, rating, is_favorite, category, summary, keywords, collection_id, ai_state, ai_error, published_at, created_at, deleted_at, collection:collections(id, name, color), link_tags(tag:tags(name))"
-      );
+    try {
+      let query = supabase
+        .from("links")
+        .select(
+          "id, url, title, note, status, rating, is_favorite, category, summary, keywords, collection_id, ai_state, ai_error, published_at, created_at, deleted_at, collection:collections(id, name, color), link_tags(tag:tags(name))"
+        );
 
-    query = showTrash ? query.not("deleted_at", "is", null) : query.is("deleted_at", null);
+      query = showTrash ? query.not("deleted_at", "is", null) : query.is("deleted_at", null);
 
-    if (collectionFilter !== "all") {
-      query = query.eq("collection_id", collectionFilter);
-    }
-
-    if (categoryFilter !== "all") {
-      const aliases = CATEGORY_FILTER_ALIASES[categoryFilter] || [categoryFilter];
-      query = aliases.length > 1 ? query.in("category", aliases) : query.eq("category", aliases[0]);
-    }
-
-    if (favoriteOnly) {
-      query = query.eq("is_favorite", true);
-    }
-
-    const searchValue = search.trim();
-    if (searchValue) {
-      query = query.or(`url.ilike.%${searchValue}%,title.ilike.%${searchValue}%,note.ilike.%${searchValue}%`);
-    }
-
-    if (sortMode === "newest") {
-      query = query.order("published_at", { ascending: false, nullsFirst: false });
-      query = query.order("created_at", { ascending: false });
-    }
-
-    if (sortMode === "oldest") {
-      query = query.order("published_at", { ascending: true, nullsFirst: false });
-      query = query.order("created_at", { ascending: true });
-    }
-
-    if (sortMode === "rating") {
-      query = query.order("rating", { ascending: false, nullsFirst: false });
-      query = query.order("created_at", { ascending: false });
-    }
-
-    const countOnly = async (countQuery: any) => {
-      const { count, error } = await countQuery;
-      if (error) {
-        throw error;
+      if (collectionFilter !== "all") {
+        query = query.eq("collection_id", collectionFilter);
       }
-      return count ?? 0;
-    };
 
-    const fixedQueries = [
-      query.limit(200),
-      countOnly(supabase.from("links").select("id", { count: "exact", head: true }).is("deleted_at", null)),
-      countOnly(supabase.from("links").select("id", { count: "exact", head: true }).is("deleted_at", null).eq("status", "unread")),
-      countOnly(supabase.from("links").select("id", { count: "exact", head: true }).is("deleted_at", null).eq("status", "reading")),
-      countOnly(supabase.from("links").select("id", { count: "exact", head: true }).is("deleted_at", null).eq("status", "done")),
-      countOnly(supabase.from("links").select("id", { count: "exact", head: true }).is("deleted_at", null).eq("is_favorite", true)),
-      countOnly(supabase.from("links").select("id", { count: "exact", head: true }).is("deleted_at", null).eq("ai_state", "success")),
-      countOnly(supabase.from("links").select("id", { count: "exact", head: true }).not("deleted_at", "is", null))
-    ] as const;
+      if (categoryFilter !== "all") {
+        const aliases = CATEGORY_FILTER_ALIASES[categoryFilter] || [categoryFilter];
+        query = aliases.length > 1 ? query.in("category", aliases) : query.eq("category", aliases[0]);
+      }
 
-    const categoryCountQueries = CATEGORY_BASE_MENU.map((category) => {
-      const aliases = CATEGORY_FILTER_ALIASES[category] || [category];
-      return countOnly(supabase.from("links").select("id", { count: "exact", head: true }).is("deleted_at", null).in("category", aliases));
-    });
+      if (favoriteOnly) {
+        query = query.eq("is_favorite", true);
+      }
 
-    const [fixedResults, categoryCountValues] = await Promise.all([Promise.all(fixedQueries), Promise.all(categoryCountQueries)]);
-    const [listResult, total, unread, reading, done, favorite, aiDone, trash] = fixedResults;
+      const searchValue = search.trim();
+      if (searchValue) {
+        query = query.or(`url.ilike.%${searchValue}%,title.ilike.%${searchValue}%,note.ilike.%${searchValue}%`);
+      }
 
-    setLoadingLinks(false);
+      if (sortMode === "newest") {
+        query = query.order("published_at", { ascending: false, nullsFirst: false });
+        query = query.order("created_at", { ascending: false });
+      }
 
-    if (listResult.error) {
-      setErrorMessage(`링크 조회 실패: ${listResult.error.message}`);
-      return;
+      if (sortMode === "oldest") {
+        query = query.order("published_at", { ascending: true, nullsFirst: false });
+        query = query.order("created_at", { ascending: true });
+      }
+
+      if (sortMode === "rating") {
+        query = query.order("rating", { ascending: false, nullsFirst: false });
+        query = query.order("created_at", { ascending: false });
+      }
+
+      const countOnly = async (countQuery: any) => {
+        const { count, error } = await countQuery;
+        if (error) {
+          throw error;
+        }
+        return count ?? 0;
+      };
+
+      const listPromise = query.limit(200);
+      const statsPromise = skipCounts
+        ? Promise.resolve<{
+            total: number;
+            unread: number;
+            reading: number;
+            done: number;
+            favorite: number;
+            aiDone: number;
+            trash: number;
+            categoryCountValues: number[];
+          } | null>(null)
+        : (async () => {
+            const fixedQueries = [
+              countOnly(supabase.from("links").select("id", { count: "exact", head: true }).is("deleted_at", null)),
+              countOnly(supabase.from("links").select("id", { count: "exact", head: true }).is("deleted_at", null).eq("status", "unread")),
+              countOnly(supabase.from("links").select("id", { count: "exact", head: true }).is("deleted_at", null).eq("status", "reading")),
+              countOnly(supabase.from("links").select("id", { count: "exact", head: true }).is("deleted_at", null).eq("status", "done")),
+              countOnly(supabase.from("links").select("id", { count: "exact", head: true }).is("deleted_at", null).eq("is_favorite", true)),
+              countOnly(supabase.from("links").select("id", { count: "exact", head: true }).is("deleted_at", null).eq("ai_state", "success")),
+              countOnly(supabase.from("links").select("id", { count: "exact", head: true }).not("deleted_at", "is", null))
+            ] as const;
+
+            const categoryCountQueries = CATEGORY_BASE_MENU.map((category) => {
+              const aliases = CATEGORY_FILTER_ALIASES[category] || [category];
+              return countOnly(
+                supabase.from("links").select("id", { count: "exact", head: true }).is("deleted_at", null).in("category", aliases)
+              );
+            });
+
+            const [fixedResults, categoryCountValues] = await Promise.all([Promise.all(fixedQueries), Promise.all(categoryCountQueries)]);
+            const [total, unread, reading, done, favorite, aiDone, trash] = fixedResults;
+            return { total, unread, reading, done, favorite, aiDone, trash, categoryCountValues };
+          })();
+
+      const [listResult, statsPayload] = await Promise.all([listPromise, statsPromise]);
+
+      if (listResult.error) {
+        setErrorMessage(`링크 조회 실패: ${listResult.error.message}`);
+        return;
+      }
+
+      if (statsPayload) {
+        setLibraryStats({
+          total: statsPayload.total,
+          unread: statsPayload.unread,
+          reading: statsPayload.reading,
+          done: statsPayload.done,
+          favorite: statsPayload.favorite,
+          aiDone: statsPayload.aiDone,
+          trash: statsPayload.trash
+        });
+
+        const nextCategoryCounts = createEmptyCategoryCounts();
+        CATEGORY_BASE_MENU.forEach((category, index) => {
+          nextCategoryCounts[category] = statsPayload.categoryCountValues[index] ?? 0;
+        });
+        setCategoryCounts(nextCategoryCounts);
+      }
+
+      const mapped = (listResult.data || []).map(mapLinkRow);
+      setLinks(mapped);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setErrorMessage(`링크 조회 실패: ${message}`);
+    } finally {
+      if (!silent) {
+        setLoadingLinks(false);
+      }
     }
-
-    setLibraryStats({
-      total,
-      unread,
-      reading,
-      done,
-      favorite,
-      aiDone,
-      trash
-    });
-
-    const nextCategoryCounts = createEmptyCategoryCounts();
-    CATEGORY_BASE_MENU.forEach((category, index) => {
-      nextCategoryCounts[category] = categoryCountValues[index] ?? 0;
-    });
-    setCategoryCounts(nextCategoryCounts);
-
-    const mapped = (listResult.data || []).map(mapLinkRow);
-    setLinks(mapped);
   }, [session, showTrash, collectionFilter, categoryFilter, favoriteOnly, search, sortMode]);
 
   const requestAiAnalysis = useCallback(
@@ -1037,7 +1083,7 @@ export default function App() {
   );
 
   const runAiEnrichmentInBackground = useCallback(
-    async (link: Pick<LinkItem, "id" | "title" | "url">, options?: { silent?: boolean }) => {
+    async (link: Pick<LinkItem, "id" | "title" | "url">, options?: { silent?: boolean; refreshAfter?: boolean }) => {
       try {
         await runAiWithRetry(link.id, 1);
         if (!options?.silent) {
@@ -1050,7 +1096,9 @@ export default function App() {
           setToast({ kind: "err", message: `AI 분석 실패: ${getLinkDisplayLabel(link)} (재시도 가능)` });
         }
       } finally {
-        await loadLinks();
+        if (options?.refreshAfter !== false) {
+          await loadLinks({ silent: true, skipCounts: true });
+        }
       }
     },
     [runAiWithRetry, loadLinks]
@@ -1414,18 +1462,19 @@ export default function App() {
         });
       }
 
-      await loadLinks();
-      if (importedLinksForAi.length > 0) {
+      await loadLinks({ silent: true, skipCounts: true });
+      if (autoAnalyzeOnImport && importedLinksForAi.length > 0) {
         void (async () => {
           for (const link of importedLinksForAi) {
-            await runAiEnrichmentInBackground(link, { silent: true });
+            await runAiEnrichmentInBackground(link, { silent: true, refreshAfter: false });
           }
+          await loadLinks({ silent: true });
           setToast({ kind: "ok", message: `가져온 기사 AI 보강 완료 (${importedLinksForAi.length}건)` });
         })();
       }
       setToast({
         kind: failed > 0 ? "info" : "ok",
-        message: `가져오기 완료: 성공 ${inserted}건${failed > 0 ? `, 실패 ${failed}건` : ""}${importedLinksForAi.length > 0 ? ` · AI 보강 시작` : ""}`
+        message: `가져오기 완료: 성공 ${inserted}건${failed > 0 ? `, 실패 ${failed}건` : ""}${autoAnalyzeOnImport && importedLinksForAi.length > 0 ? ` · AI 보강 시작` : ""}`
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -1708,7 +1757,6 @@ export default function App() {
       setIsAddModalOpen(false);
 
       void runAiEnrichmentInBackground(optimistic);
-      void loadLinks();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setErrorMessage(`링크 저장 실패: ${message}`);
@@ -1827,13 +1875,13 @@ export default function App() {
       setLinks((prev) => prev.map((item) => (item.id === link.id ? { ...item, ai_state: "pending", ai_error: null } : item)));
       await runAiWithRetry(link.id, 1);
 
-      await loadLinks();
+      await loadLinks({ silent: true });
       setToast({ kind: "ok", message: `AI 분석 완료: ${getLinkDisplayLabel(link)}` });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setErrorMessage(`AI 분석 실패: ${message}`);
       setToast({ kind: "err", message: `AI 분석 실패: ${getLinkDisplayLabel(link)}` });
-      await loadLinks();
+      await loadLinks({ silent: true });
     } finally {
       setSavingLinkId(null);
     }
@@ -1904,7 +1952,7 @@ export default function App() {
         }
       }
 
-      await loadLinks();
+      await loadLinks({ silent: true });
       if (failed === 0) {
         setToast({ kind: "ok", message: `미분류 링크 AI 분석 완료 (${success}건)` });
       } else {
@@ -2663,6 +2711,25 @@ export default function App() {
                 <article className="settings-card">
                   <h3>데이터 관리</h3>
                   <p className="muted">기사 가져오기/내보내기와 전체 삭제를 관리합니다.</p>
+                  <div className="settings-control">
+                    <span>가져오기 후 AI 자동 분석</span>
+                    <div className="chip-row">
+                      <button
+                        type="button"
+                        className={`chip ${!autoAnalyzeOnImport ? "active" : ""}`}
+                        onClick={() => setAutoAnalyzeOnImport(false)}
+                      >
+                        끔
+                      </button>
+                      <button
+                        type="button"
+                        className={`chip ${autoAnalyzeOnImport ? "active" : ""}`}
+                        onClick={() => setAutoAnalyzeOnImport(true)}
+                      >
+                        켬
+                      </button>
+                    </div>
+                  </div>
                   <div className="settings-actions">
                     <button type="button" className="ghost" onClick={() => importFileInputRef.current?.click()} disabled={importingFile}>
                       {importingFile ? "가져오는 중..." : "파일 가져오기"}
