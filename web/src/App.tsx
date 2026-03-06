@@ -96,6 +96,7 @@ type SortMode = "newest" | "oldest" | "rating";
 type ViewMode = "card" | "list";
 type StatusFilter = "all" | LinkStatus;
 type ThemeMode = "dark" | "light";
+const DETAIL_STATUS_ORDER: LinkStatus[] = ["unread", "reading", "done", "archived"];
 
 const CATEGORY_BASE_MENU = [
   "AI/머신러닝",
@@ -333,6 +334,7 @@ export default function App() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [manualTitleEdited, setManualTitleEdited] = useState(false);
   const [importingFile, setImportingFile] = useState(false);
+  const [bulkAiRunning, setBulkAiRunning] = useState(false);
 
   const [collectionName, setCollectionName] = useState("");
   const [collectionColor, setCollectionColor] = useState("#5f7df3");
@@ -1189,6 +1191,86 @@ export default function App() {
     }
   }
 
+  async function runBulkAiForUncategorized() {
+    if (!session || bulkAiRunning) {
+      return;
+    }
+
+    setBulkAiRunning(true);
+    setErrorMessage(null);
+
+    try {
+      const pageSize = 500;
+      let page = 0;
+      const targets: { id: string }[] = [];
+
+      while (true) {
+        const from = page * pageSize;
+        const to = from + pageSize - 1;
+        const { data, error } = await supabase
+          .from("links")
+          .select("id, category, ai_state")
+          .is("deleted_at", null)
+          .order("created_at", { ascending: true })
+          .range(from, to);
+
+        if (error) {
+          throw error;
+        }
+
+        if (!data || data.length === 0) {
+          break;
+        }
+
+        for (const row of data) {
+          const category = typeof row?.category === "string" ? row.category.trim() : "";
+          if (category.length === 0 && row?.ai_state !== "pending" && typeof row?.id === "string") {
+            targets.push({ id: row.id });
+          }
+        }
+
+        if (data.length < pageSize) {
+          break;
+        }
+
+        page += 1;
+      }
+
+      if (targets.length === 0) {
+        setToast({ kind: "info", message: "미분류 링크가 없습니다." });
+        return;
+      }
+
+      setToast({ kind: "info", message: `미분류 링크 AI 분석 시작 (${targets.length}건)` });
+
+      let success = 0;
+      let failed = 0;
+
+      for (const target of targets) {
+        setLinks((prev) => prev.map((item) => (item.id === target.id ? { ...item, ai_state: "pending", ai_error: null } : item)));
+        try {
+          await runAiWithRetry(target.id, 1);
+          success += 1;
+        } catch {
+          failed += 1;
+        }
+      }
+
+      await loadLinks();
+      if (failed === 0) {
+        setToast({ kind: "ok", message: `미분류 링크 AI 분석 완료 (${success}건)` });
+      } else {
+        setToast({ kind: "err", message: `일괄 AI 분석 완료: 성공 ${success}건, 실패 ${failed}건` });
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setErrorMessage(`미분류 일괄 AI 실행 실패: ${message}`);
+      setToast({ kind: "err", message: "미분류 일괄 AI 실행 실패" });
+    } finally {
+      setBulkAiRunning(false);
+    }
+  }
+
   const markLinkAsRead = useCallback(
     async (linkId: string) => {
       if (!session) {
@@ -1634,6 +1716,9 @@ export default function App() {
             </button>
             <button type="button" className="ghost" onClick={() => void loadLinks()}>
               새로고침
+            </button>
+            <button type="button" className="ghost" onClick={() => void runBulkAiForUncategorized()} disabled={bulkAiRunning || loadingLinks}>
+              {bulkAiRunning ? "미분류 AI 처리중..." : "미분류 전체 AI"}
             </button>
             <button
               type="button"
@@ -2087,54 +2172,83 @@ export default function App() {
                   <span>{selectedLink.collection?.name || "컬렉션 없음"}</span>
                 </div>
 
-                <label>
+                <div className="detail-toggle-row">
+                  <div className="detail-status-toggle" role="group" aria-label="상태 선택">
+                    {DETAIL_STATUS_ORDER.map((status) => (
+                      <button
+                        key={status}
+                        type="button"
+                        className={`status-mini-btn ${selectedDraft.status === status ? "active" : ""}`}
+                        onClick={() => updateDraft(selectedLink, { status })}
+                      >
+                        {STATUS_LABEL[status]}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="detail-star-rating" role="group" aria-label="별점 선택">
+                    {[1, 2, 3, 4, 5].map((star) => {
+                      const current = Number(selectedDraft.rating || 0);
+                      return (
+                        <button
+                          key={star}
+                          type="button"
+                          className={`star-btn ${current >= star ? "active" : ""}`}
+                          onClick={() => updateDraft(selectedLink, { rating: String(star) })}
+                          aria-label={`${star}점`}
+                          title={`${star}점`}
+                        >
+                          ★
+                        </button>
+                      );
+                    })}
+                    <button
+                      type="button"
+                      className={`star-clear ${selectedDraft.rating ? "active" : ""}`}
+                      onClick={() => updateDraft(selectedLink, { rating: "" })}
+                    >
+                      초기화
+                    </button>
+                  </div>
+                </div>
+
+                <label className="detail-note">
                   메모
                   <textarea
-                    rows={4}
+                    rows={9}
                     value={selectedDraft.note}
                     onChange={(event) => updateDraft(selectedLink, { note: event.target.value })}
                   />
                 </label>
                 <label>
-                  상태
-                  <select
-                    value={selectedDraft.status}
-                    onChange={(event) => updateDraft(selectedLink, { status: event.target.value as LinkStatus })}
-                  >
-                    <option value="unread">읽기전</option>
-                    <option value="reading">읽음</option>
-                    <option value="done">완료</option>
-                    <option value="archived">보관</option>
-                  </select>
-                </label>
-                <label>
                   컬렉션
-                  <select
-                    value={selectedDraft.collectionId}
-                    onChange={(event) => updateDraft(selectedLink, { collectionId: event.target.value })}
-                  >
-                    <option value="">컬렉션 없음</option>
+                  <div className="detail-collection-buttons">
+                    <button
+                      type="button"
+                      className={`collection-choice ${selectedDraft.collectionId === "" ? "active" : ""}`}
+                      onClick={() => updateDraft(selectedLink, { collectionId: "" })}
+                    >
+                      컬렉션 없음
+                    </button>
                     {collections.map((collection) => (
-                      <option key={collection.id} value={collection.id}>
+                      <button
+                        key={collection.id}
+                        type="button"
+                        className={`collection-choice ${selectedDraft.collectionId === collection.id ? "active" : ""}`}
+                        onClick={() => updateDraft(selectedLink, { collectionId: collection.id })}
+                      >
+                        <span className="collection-dot" style={{ backgroundColor: collection.color || "#5f7df3" }} />
                         {collection.name}
-                      </option>
+                      </button>
                     ))}
-                  </select>
-                </label>
-                <label>
-                  별점
-                  <input
-                    type="number"
-                    min={1}
-                    max={5}
-                    placeholder="1~5"
-                    value={selectedDraft.rating}
-                    onChange={(event) => updateDraft(selectedLink, { rating: event.target.value })}
-                  />
+                  </div>
                 </label>
                 <label>
                   태그
-                  <input value={selectedDraft.tags} onChange={(event) => updateDraft(selectedLink, { tags: event.target.value })} />
+                  <input
+                    className="detail-tag-input"
+                    value={selectedDraft.tags}
+                    onChange={(event) => updateDraft(selectedLink, { tags: event.target.value })}
+                  />
                 </label>
 
                 {selectedLink.ai_error && <p className="error-text">AI 오류: {selectedLink.ai_error}</p>}
