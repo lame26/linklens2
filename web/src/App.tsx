@@ -2203,8 +2203,11 @@ export default function App() {
       <aside className="sidebar">
         <div className="logo">
           <div className="logo-row">
+            <div className="logo-mark-wrap" aria-hidden>
+              <img src="/logo.png" alt="" className="logo-mark" />
+            </div>
             <div>
-            <p className="eyebrow">Reading Archive</p>
+              <p className="eyebrow">Reading Archive</p>
               <h1 className="logo-name">LinkPocket</h1>
             </div>
           </div>
