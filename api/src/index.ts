@@ -25,13 +25,13 @@ const REQUIRED_ENV_KEYS: Array<keyof Env> = [
 ];
 
 const AI_CATEGORY_CATALOG = [
-  "인공지능/개발",
-  "데이터/인프라",
-  "비즈니스/금융",
-  "과학/헬스",
-  "사회/정책",
-  "라이프/문화",
-  "기타"
+  "정치",
+  "경제",
+  "사회",
+  "생활/문화",
+  "IT/과학",
+  "세계",
+  "사설/칼럼"
 ] as const;
 
 function jsonResponse(data: unknown, status = 200): Response {
@@ -309,23 +309,47 @@ function isSyntheticImportUrl(input: string): boolean {
 function normalizeAiCategory(raw: string | undefined): string {
   const value = (raw || "").trim();
   if (!value) {
-    return "기타";
+    return "사회";
   }
 
   if ((AI_CATEGORY_CATALOG as readonly string[]).includes(value)) {
     return value;
   }
 
+  const direct: Record<string, string> = {
+    "정치/사회": "정치",
+    "비즈니스/금융": "경제",
+    "비즈니스/경제": "경제",
+    "경제/정책": "경제",
+    "투자/금융": "경제",
+    "라이프/문화": "생활/문화",
+    "문화/라이프": "생활/문화",
+    "인공지능/개발": "IT/과학",
+    "AI/개발": "IT/과학",
+    "AI/머신러닝": "IT/과학",
+    "개발/프로그래밍": "IT/과학",
+    "데이터/인프라": "IT/과학",
+    "데이터/분석": "IT/과학",
+    "보안/인프라": "IT/과학",
+    "과학/헬스": "IT/과학",
+    "과학/기술": "IT/과학",
+    "헬스/바이오": "IT/과학",
+    "사회/정책": "사회",
+    "교육/커리어": "사회",
+    기타: "사회"
+  };
+  if (direct[value]) {
+    return direct[value];
+  }
+
   const lower = value.toLowerCase();
-  if (lower.includes("ai") || lower.includes("ml") || lower.includes("머신러닝") || lower.includes("개발") || lower.includes("프로그래밍") || lower.includes("software") || lower.includes("code")) return "인공지능/개발";
-  if (lower.includes("data") || lower.includes("분석") || lower.includes("보안") || lower.includes("infra") || lower.includes("인프라") || lower.includes("cloud")) return "데이터/인프라";
-  if (lower.includes("디자인") || lower.includes("ux") || lower.includes("ui") || lower.includes("product") || lower.includes("startup") || lower.includes("비즈니스") || lower.includes("business") || lower.includes("경제")) return "비즈니스/금융";
-  if (lower.includes("투자") || lower.includes("금융") || lower.includes("finance") || lower.includes("주식")) return "비즈니스/금융";
-  if (lower.includes("science") || lower.includes("과학") || lower.includes("기술") || lower.includes("health") || lower.includes("bio") || lower.includes("헬스") || lower.includes("바이오")) return "과학/헬스";
-  if (lower.includes("정치") || lower.includes("사회") || lower.includes("politic") || lower.includes("policy") || lower.includes("정책")) return "사회/정책";
-  if (lower.includes("교육") || lower.includes("커리어") || lower.includes("career") || lower.includes("study")) return "사회/정책";
-  if (lower.includes("문화") || lower.includes("lifestyle") || lower.includes("life") || lower.includes("라이프")) return "라이프/문화";
-  return "기타";
+  if (lower.includes("사설") || lower.includes("칼럼") || lower.includes("opinion") || lower.includes("column") || lower.includes("editorial")) return "사설/칼럼";
+  if (lower.includes("세계") || lower.includes("국제") || lower.includes("해외") || lower.includes("world") || lower.includes("global") || lower.includes("international")) return "세계";
+  if (lower.includes("정치") || lower.includes("국회") || lower.includes("대통령") || lower.includes("정부") || lower.includes("정당") || lower.includes("election") || lower.includes("politic")) return "정치";
+  if (lower.includes("경제") || lower.includes("금융") || lower.includes("주식") || lower.includes("비즈니스") || lower.includes("투자") || lower.includes("business") || lower.includes("finance") || lower.includes("market")) return "경제";
+  if (lower.includes("생활") || lower.includes("문화") || lower.includes("연예") || lower.includes("여행") || lower.includes("food") || lower.includes("lifestyle")) return "생활/문화";
+  if (lower.includes("ai") || lower.includes("ml") || lower.includes("개발") || lower.includes("it") || lower.includes("프로그래밍") || lower.includes("software") || lower.includes("data") || lower.includes("분석") || lower.includes("보안") || lower.includes("infra") || lower.includes("과학") || lower.includes("science") || lower.includes("tech")) return "IT/과학";
+  return "사회";
 }
 
 function mergeKeywordList(existing: unknown, incoming: unknown, limit = 12): string[] {

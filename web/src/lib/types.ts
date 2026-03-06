@@ -1,4 +1,4 @@
-export type LinkStatus = "unread" | "reading" | "done" | "archived";
+export type LinkStatus = "unread" | "reading" | "archived";
 export type LinkAiState = "idle" | "pending" | "success" | "failed";
 
 export interface Collection {

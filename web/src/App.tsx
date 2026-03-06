@@ -98,51 +98,68 @@ type StatusFilter = "all" | LinkStatus;
 type ThemeMode = "dark" | "light";
 type MainTab = "library" | "settings";
 type FontScaleMode = "small" | "normal" | "large";
-const DETAIL_STATUS_ORDER: LinkStatus[] = ["unread", "reading", "done", "archived"];
+const DETAIL_STATUS_ORDER: LinkStatus[] = ["unread", "reading", "archived"];
 
 const CATEGORY_BASE_MENU = [
-  "인공지능/개발",
-  "데이터/인프라",
-  "비즈니스/금융",
-  "과학/헬스",
-  "사회/정책",
-  "라이프/문화",
-  "기타"
+  "정치",
+  "경제",
+  "사회",
+  "생활/문화",
+  "IT/과학",
+  "세계",
+  "사설/칼럼"
 ] as const;
 
 const CATEGORY_COMPAT_MAP: Record<string, string> = {
-  "AI/머신러닝": "인공지능/개발",
-  "개발/프로그래밍": "인공지능/개발",
-  "AI/개발": "인공지능/개발",
-  "인공지능/개발": "인공지능/개발",
-  "데이터/분석": "데이터/인프라",
-  "보안/인프라": "데이터/인프라",
-  "데이터/인프라": "데이터/인프라",
-  "제품/디자인": "비즈니스/금융",
-  "스타트업/비즈니스": "비즈니스/금융",
-  "경제/정책": "비즈니스/금융",
-  "비즈니스/경제": "비즈니스/금융",
-  "투자/금융": "비즈니스/금융",
-  "비즈니스/금융": "비즈니스/금융",
-  "과학/기술": "과학/헬스",
-  "헬스/바이오": "과학/헬스",
-  "과학/헬스": "과학/헬스",
-  "정치/사회": "사회/정책",
-  "사회/정책": "사회/정책",
-  "교육/커리어": "사회/정책",
-  "문화/라이프": "라이프/문화",
-  "라이프/문화": "라이프/문화",
-  "기타": "기타"
+  정치: "정치",
+  경제: "경제",
+  사회: "사회",
+  "생활/문화": "생활/문화",
+  "IT/과학": "IT/과학",
+  세계: "세계",
+  "사설/칼럼": "사설/칼럼",
+  "정치/사회": "정치",
+  "비즈니스/금융": "경제",
+  "비즈니스/경제": "경제",
+  "경제/정책": "경제",
+  "투자/금융": "경제",
+  "라이프/문화": "생활/문화",
+  "문화/라이프": "생활/문화",
+  "인공지능/개발": "IT/과학",
+  "AI/개발": "IT/과학",
+  "AI/머신러닝": "IT/과학",
+  "개발/프로그래밍": "IT/과학",
+  "데이터/인프라": "IT/과학",
+  "데이터/분석": "IT/과학",
+  "보안/인프라": "IT/과학",
+  "과학/헬스": "IT/과학",
+  "과학/기술": "IT/과학",
+  "헬스/바이오": "IT/과학",
+  "사회/정책": "사회",
+  "교육/커리어": "사회",
+  기타: "사회"
 };
 
 const CATEGORY_FILTER_ALIASES: Record<string, string[]> = {
-  "인공지능/개발": ["인공지능/개발", "AI/개발", "AI/머신러닝", "개발/프로그래밍"],
-  "데이터/인프라": ["데이터/인프라", "데이터/분석", "보안/인프라"],
-  "비즈니스/금융": ["비즈니스/금융", "비즈니스/경제", "제품/디자인", "스타트업/비즈니스", "경제/정책", "투자/금융"],
-  "과학/헬스": ["과학/헬스", "과학/기술", "헬스/바이오"],
-  "사회/정책": ["사회/정책", "정치/사회", "교육/커리어"],
-  "라이프/문화": ["라이프/문화", "문화/라이프"],
-  "기타": ["기타"]
+  정치: ["정치", "정치/사회"],
+  경제: ["경제", "비즈니스/금융", "비즈니스/경제", "경제/정책", "투자/금융"],
+  사회: ["사회", "사회/정책", "교육/커리어", "기타"],
+  "생활/문화": ["생활/문화", "라이프/문화", "문화/라이프"],
+  "IT/과학": [
+    "IT/과학",
+    "인공지능/개발",
+    "AI/개발",
+    "AI/머신러닝",
+    "개발/프로그래밍",
+    "데이터/인프라",
+    "데이터/분석",
+    "보안/인프라",
+    "과학/헬스",
+    "과학/기술",
+    "헬스/바이오"
+  ],
+  세계: ["세계", "국제"],
+  "사설/칼럼": ["사설/칼럼", "사설", "칼럼"]
 };
 
 const COLLECTION_COLOR_PRESET = [
@@ -178,7 +195,7 @@ interface LibraryStats {
   total: number;
   unread: number;
   reading: number;
-  done: number;
+  archived: number;
   favorite: number;
   aiDone: number;
   trash: number;
@@ -198,9 +215,8 @@ interface ImportArticleRow {
 }
 
 const STATUS_LABEL: Record<LinkStatus, string> = {
-  unread: "읽기전",
+  unread: "안읽음",
   reading: "읽음",
-  done: "완료",
   archived: "보관"
 };
 
@@ -531,15 +547,37 @@ function normalizeCategoryName(raw: unknown): string | null {
   }
 
   const lower = value.toLowerCase();
-  if (lower.includes("ai") || lower.includes("머신러닝") || lower.includes("개발") || lower.includes("프로그래밍")) return "인공지능/개발";
-  if (lower.includes("data") || lower.includes("데이터") || lower.includes("infra") || lower.includes("인프라") || lower.includes("보안")) return "데이터/인프라";
-  if (lower.includes("비즈니스") || lower.includes("business") || lower.includes("경제") || lower.includes("startup") || lower.includes("디자인")) return "비즈니스/금융";
-  if (lower.includes("투자") || lower.includes("금융") || lower.includes("finance") || lower.includes("주식")) return "비즈니스/금융";
-  if (lower.includes("과학") || lower.includes("science") || lower.includes("헬스") || lower.includes("바이오") || lower.includes("health")) return "과학/헬스";
-  if (lower.includes("정치") || lower.includes("사회") || lower.includes("정책") || lower.includes("policy")) return "사회/정책";
-  if (lower.includes("교육") || lower.includes("커리어") || lower.includes("career") || lower.includes("study")) return "사회/정책";
-  if (lower.includes("문화") || lower.includes("라이프") || lower.includes("lifestyle")) return "라이프/문화";
-  return "기타";
+  if (lower.includes("사설") || lower.includes("칼럼") || lower.includes("opinion") || lower.includes("editorial") || lower.includes("column")) return "사설/칼럼";
+  if (lower.includes("세계") || lower.includes("국제") || lower.includes("해외") || lower.includes("world") || lower.includes("global") || lower.includes("international")) return "세계";
+  if (lower.includes("정치") || lower.includes("국회") || lower.includes("대통령") || lower.includes("정부") || lower.includes("정당") || lower.includes("election") || lower.includes("politic")) return "정치";
+  if (lower.includes("경제") || lower.includes("금융") || lower.includes("주식") || lower.includes("비즈니스") || lower.includes("투자") || lower.includes("business") || lower.includes("finance") || lower.includes("market")) return "경제";
+  if (lower.includes("생활") || lower.includes("문화") || lower.includes("연예") || lower.includes("여행") || lower.includes("푸드") || lower.includes("food") || lower.includes("lifestyle")) return "생활/문화";
+  if (
+    lower.includes("ai") ||
+    lower.includes("it") ||
+    lower.includes("개발") ||
+    lower.includes("프로그래밍") ||
+    lower.includes("데이터") ||
+    lower.includes("인프라") ||
+    lower.includes("보안") ||
+    lower.includes("과학") ||
+    lower.includes("기술") ||
+    lower.includes("science") ||
+    lower.includes("tech")
+  ) {
+    return "IT/과학";
+  }
+  return "사회";
+}
+
+function normalizeStatus(raw: unknown): LinkStatus {
+  if (raw === "unread" || raw === "reading" || raw === "archived") {
+    return raw;
+  }
+  if (raw === "done") {
+    return "archived";
+  }
+  return "unread";
 }
 
 function createEmptyCategoryCounts(): Record<string, number> {
@@ -603,7 +641,7 @@ function mapLinkRow(row: any): LinkItem {
     url: row.url,
     title: row.title,
     note: row.note,
-    status: row.status,
+    status: normalizeStatus(row.status),
     rating: row.rating,
     is_favorite: row.is_favorite,
     category: normalizeCategoryName(row.category),
@@ -651,7 +689,7 @@ export default function App() {
     total: 0,
     unread: 0,
     reading: 0,
-    done: 0,
+    archived: 0,
     favorite: 0,
     aiDone: 0,
     trash: 0
@@ -887,7 +925,7 @@ export default function App() {
         total: 0,
         unread: 0,
         reading: 0,
-        done: 0,
+        archived: 0,
         favorite: 0,
         aiDone: 0,
         trash: 0
@@ -959,7 +997,7 @@ export default function App() {
             total: number;
             unread: number;
             reading: number;
-            done: number;
+            archived: number;
             favorite: number;
             aiDone: number;
             trash: number;
@@ -970,7 +1008,7 @@ export default function App() {
               countOnly(supabase.from("links").select("id", { count: "exact", head: true }).is("deleted_at", null)),
               countOnly(supabase.from("links").select("id", { count: "exact", head: true }).is("deleted_at", null).eq("status", "unread")),
               countOnly(supabase.from("links").select("id", { count: "exact", head: true }).is("deleted_at", null).eq("status", "reading")),
-              countOnly(supabase.from("links").select("id", { count: "exact", head: true }).is("deleted_at", null).eq("status", "done")),
+              countOnly(supabase.from("links").select("id", { count: "exact", head: true }).is("deleted_at", null).eq("status", "archived")),
               countOnly(supabase.from("links").select("id", { count: "exact", head: true }).is("deleted_at", null).eq("is_favorite", true)),
               countOnly(supabase.from("links").select("id", { count: "exact", head: true }).is("deleted_at", null).eq("ai_state", "success")),
               countOnly(supabase.from("links").select("id", { count: "exact", head: true }).not("deleted_at", "is", null))
@@ -984,8 +1022,8 @@ export default function App() {
             });
 
             const [fixedResults, categoryCountValues] = await Promise.all([Promise.all(fixedQueries), Promise.all(categoryCountQueries)]);
-            const [total, unread, reading, done, favorite, aiDone, trash] = fixedResults;
-            return { total, unread, reading, done, favorite, aiDone, trash, categoryCountValues };
+            const [total, unread, reading, archived, favorite, aiDone, trash] = fixedResults;
+            return { total, unread, reading, archived, favorite, aiDone, trash, categoryCountValues };
           })();
 
       const [listResult, statsPayload] = await Promise.all([listPromise, statsPromise]);
@@ -1000,7 +1038,7 @@ export default function App() {
           total: statsPayload.total,
           unread: statsPayload.unread,
           reading: statsPayload.reading,
-          done: statsPayload.done,
+          archived: statsPayload.archived,
           favorite: statsPayload.favorite,
           aiDone: statsPayload.aiDone,
           trash: statsPayload.trash
@@ -2070,7 +2108,7 @@ export default function App() {
   }, [categoryMenu, categoryCounts]);
 
   const readingCount = libraryStats.reading;
-  const doneCount = libraryStats.done;
+  const archivedCount = libraryStats.archived;
   const userLabel = useMemo(() => {
     const emailValue = session?.user?.email || "User";
     return emailValue.split("@")[0] || emailValue;
@@ -2097,13 +2135,13 @@ export default function App() {
       return currentCollectionName;
     }
     if (statusFilter === "unread") {
-      return "미읽음";
+      return "안읽음";
     }
     if (statusFilter === "reading") {
-      return "나중에 읽기";
+      return "읽음";
     }
-    if (statusFilter === "done") {
-      return "완료";
+    if (statusFilter === "archived") {
+      return "보관";
     }
     return "전체 기사";
   }, [mainTab, showTrash, favoriteOnly, categoryFilter, currentCollectionName, statusFilter]);
@@ -2210,7 +2248,7 @@ export default function App() {
                 setFavoriteOnly(false);
               }}
             >
-              읽기전 <span className="nav-count">{headerStats.unread}</span>
+              안읽음 <span className="nav-count">{headerStats.unread}</span>
             </button>
             <button
               type="button"
@@ -2223,7 +2261,7 @@ export default function App() {
                 setFavoriteOnly(false);
               }}
             >
-              나중에 읽기 <span className="nav-count">{readingCount}</span>
+              읽음 <span className="nav-count">{readingCount}</span>
             </button>
             <button
               type="button"
@@ -2240,16 +2278,16 @@ export default function App() {
             </button>
             <button
               type="button"
-              className={`nav-btn ${!showTrash && statusFilter === "done" ? "active" : ""}`}
+              className={`nav-btn ${!showTrash && statusFilter === "archived" ? "active" : ""}`}
               onClick={() => {
                 setMainTab("library");
                 setShowTrash(false);
-                setStatusFilter("done");
+                setStatusFilter("archived");
                 setCategoryFilter("all");
                 setFavoriteOnly(false);
               }}
             >
-              완료 <span className="nav-count">{doneCount}</span>
+              보관 <span className="nav-count">{archivedCount}</span>
             </button>
             <button
               type="button"
@@ -2471,7 +2509,7 @@ export default function App() {
               <strong>{headerStats.total}</strong>
             </article>
             <article className="stat">
-              <span>읽기전</span>
+              <span>안읽음</span>
               <strong>{headerStats.unread}</strong>
             </article>
             <article className="stat">
@@ -2500,7 +2538,7 @@ export default function App() {
                 className={`chip ${statusFilter === "unread" ? "active" : ""}`}
                 onClick={() => setStatusFilter((prev) => (prev === "unread" ? "all" : "unread"))}
               >
-                미읽음만
+                안읽음만
               </button>
             </div>
             <div className="view-toggle">
@@ -2568,7 +2606,7 @@ export default function App() {
                         </div>
                         <div className="link-title-wrap">
                         <div className="link-title-head">
-                          {link.status === "unread" && <span className="unread-dot" aria-label="미읽음" />}
+                          {link.status === "unread" && <span className="unread-dot" aria-label="안읽음" />}
                           <h3>{link.title || link.url}</h3>
                         </div>
                         <a
@@ -2939,8 +2977,9 @@ export default function App() {
                   <label>
                     읽기 상태
                     <select value={newStatus} onChange={(event) => setNewStatus(event.target.value as LinkStatus)}>
-                      <option value="unread">미읽음</option>
+                      <option value="unread">안읽음</option>
                       <option value="reading">읽음</option>
+                      <option value="archived">보관</option>
                     </select>
                   </label>
                 </div>
