@@ -25,13 +25,11 @@ const REQUIRED_ENV_KEYS: Array<keyof Env> = [
 ];
 
 const AI_CATEGORY_CATALOG = [
-  "AI/개발",
+  "인공지능/개발",
   "데이터/인프라",
-  "비즈니스/경제",
-  "투자/금융",
+  "비즈니스/금융",
   "과학/헬스",
   "사회/정책",
-  "교육/커리어",
   "라이프/문화",
   "기타"
 ] as const;
@@ -319,15 +317,44 @@ function normalizeAiCategory(raw: string | undefined): string {
   }
 
   const lower = value.toLowerCase();
-  if (lower.includes("ai") || lower.includes("ml") || lower.includes("머신러닝") || lower.includes("개발") || lower.includes("프로그래밍") || lower.includes("software") || lower.includes("code")) return "AI/개발";
+  if (lower.includes("ai") || lower.includes("ml") || lower.includes("머신러닝") || lower.includes("개발") || lower.includes("프로그래밍") || lower.includes("software") || lower.includes("code")) return "인공지능/개발";
   if (lower.includes("data") || lower.includes("분석") || lower.includes("보안") || lower.includes("infra") || lower.includes("인프라") || lower.includes("cloud")) return "데이터/인프라";
-  if (lower.includes("디자인") || lower.includes("ux") || lower.includes("ui") || lower.includes("product") || lower.includes("startup") || lower.includes("비즈니스") || lower.includes("business") || lower.includes("경제")) return "비즈니스/경제";
-  if (lower.includes("투자") || lower.includes("금융") || lower.includes("finance")) return "투자/금융";
+  if (lower.includes("디자인") || lower.includes("ux") || lower.includes("ui") || lower.includes("product") || lower.includes("startup") || lower.includes("비즈니스") || lower.includes("business") || lower.includes("경제")) return "비즈니스/금융";
+  if (lower.includes("투자") || lower.includes("금융") || lower.includes("finance") || lower.includes("주식")) return "비즈니스/금융";
   if (lower.includes("science") || lower.includes("과학") || lower.includes("기술") || lower.includes("health") || lower.includes("bio") || lower.includes("헬스") || lower.includes("바이오")) return "과학/헬스";
   if (lower.includes("정치") || lower.includes("사회") || lower.includes("politic") || lower.includes("policy") || lower.includes("정책")) return "사회/정책";
-  if (lower.includes("교육") || lower.includes("커리어") || lower.includes("career") || lower.includes("study")) return "교육/커리어";
+  if (lower.includes("교육") || lower.includes("커리어") || lower.includes("career") || lower.includes("study")) return "사회/정책";
   if (lower.includes("문화") || lower.includes("lifestyle") || lower.includes("life") || lower.includes("라이프")) return "라이프/문화";
   return "기타";
+}
+
+function mergeKeywordList(existing: unknown, incoming: unknown, limit = 12): string[] {
+  const values: string[] = [];
+  if (Array.isArray(existing)) {
+    values.push(...existing.filter((item): item is string => typeof item === "string"));
+  }
+  if (Array.isArray(incoming)) {
+    values.push(...incoming.filter((item): item is string => typeof item === "string"));
+  }
+
+  const seen = new Set<string>();
+  const merged: string[] = [];
+  for (const raw of values) {
+    const trimmed = raw.trim();
+    if (!trimmed) {
+      continue;
+    }
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    merged.push(trimmed);
+    if (merged.length >= limit) {
+      break;
+    }
+  }
+  return merged;
 }
 
 function normalizeTagName(value: string): string | null {
@@ -463,8 +490,8 @@ export default {
       let taskId: string | null = null;
 
       try {
-        const selectPath = `links?id=eq.${linkId}&user_id=eq.${user.id}&select=id,url,title,note`;
-        const links = await supabaseRest<Array<{ id: string; url: string; title: string | null; note: string | null }>>(env, selectPath);
+        const selectPath = `links?id=eq.${linkId}&user_id=eq.${user.id}&select=id,url,title,note,keywords`;
+        const links = await supabaseRest<Array<{ id: string; url: string; title: string | null; note: string | null; keywords: string[] | null }>>(env, selectPath);
         const link = links[0];
 
         if (!link) {
@@ -516,9 +543,7 @@ export default {
           ].join("\n")
         );
 
-        const keywords = Array.isArray(analysis.keywords)
-          ? analysis.keywords.filter((v) => typeof v === "string" && v.trim().length > 0).slice(0, 5)
-          : [];
+        const keywords = mergeKeywordList(link.keywords, analysis.keywords, 12);
         const category = normalizeAiCategory(analysis.category);
         const nextTitle = (analysis.improvedTitle || rawTitle || link.title || fallbackTitle).trim() || null;
 

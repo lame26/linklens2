@@ -99,51 +99,64 @@ type ThemeMode = "dark" | "light";
 const DETAIL_STATUS_ORDER: LinkStatus[] = ["unread", "reading", "done", "archived"];
 
 const CATEGORY_BASE_MENU = [
-  "AI/개발",
+  "인공지능/개발",
   "데이터/인프라",
-  "비즈니스/경제",
-  "투자/금융",
+  "비즈니스/금융",
   "과학/헬스",
   "사회/정책",
-  "교육/커리어",
   "라이프/문화",
   "기타"
 ] as const;
 
 const CATEGORY_COMPAT_MAP: Record<string, string> = {
-  "AI/머신러닝": "AI/개발",
-  "개발/프로그래밍": "AI/개발",
-  "AI/개발": "AI/개발",
+  "AI/머신러닝": "인공지능/개발",
+  "개발/프로그래밍": "인공지능/개발",
+  "AI/개발": "인공지능/개발",
+  "인공지능/개발": "인공지능/개발",
   "데이터/분석": "데이터/인프라",
   "보안/인프라": "데이터/인프라",
   "데이터/인프라": "데이터/인프라",
-  "제품/디자인": "비즈니스/경제",
-  "스타트업/비즈니스": "비즈니스/경제",
-  "경제/정책": "비즈니스/경제",
-  "비즈니스/경제": "비즈니스/경제",
-  "투자/금융": "투자/금융",
+  "제품/디자인": "비즈니스/금융",
+  "스타트업/비즈니스": "비즈니스/금융",
+  "경제/정책": "비즈니스/금융",
+  "비즈니스/경제": "비즈니스/금융",
+  "투자/금융": "비즈니스/금융",
+  "비즈니스/금융": "비즈니스/금융",
   "과학/기술": "과학/헬스",
   "헬스/바이오": "과학/헬스",
   "과학/헬스": "과학/헬스",
   "정치/사회": "사회/정책",
   "사회/정책": "사회/정책",
-  "교육/커리어": "교육/커리어",
+  "교육/커리어": "사회/정책",
   "문화/라이프": "라이프/문화",
   "라이프/문화": "라이프/문화",
   "기타": "기타"
 };
 
 const CATEGORY_FILTER_ALIASES: Record<string, string[]> = {
-  "AI/개발": ["AI/개발", "AI/머신러닝", "개발/프로그래밍"],
+  "인공지능/개발": ["인공지능/개발", "AI/개발", "AI/머신러닝", "개발/프로그래밍"],
   "데이터/인프라": ["데이터/인프라", "데이터/분석", "보안/인프라"],
-  "비즈니스/경제": ["비즈니스/경제", "제품/디자인", "스타트업/비즈니스", "경제/정책"],
-  "투자/금융": ["투자/금융"],
+  "비즈니스/금융": ["비즈니스/금융", "비즈니스/경제", "제품/디자인", "스타트업/비즈니스", "경제/정책", "투자/금융"],
   "과학/헬스": ["과학/헬스", "과학/기술", "헬스/바이오"],
-  "사회/정책": ["사회/정책", "정치/사회"],
-  "교육/커리어": ["교육/커리어"],
+  "사회/정책": ["사회/정책", "정치/사회", "교육/커리어"],
   "라이프/문화": ["라이프/문화", "문화/라이프"],
   "기타": ["기타"]
 };
+
+const COLLECTION_COLOR_PRESET = [
+  "#5f7df3",
+  "#00a6fb",
+  "#2ec4b6",
+  "#06d6a0",
+  "#84cc16",
+  "#f59e0b",
+  "#fb7185",
+  "#f43f5e",
+  "#8b5cf6",
+  "#14b8a6",
+  "#ef4444",
+  "#0ea5e9"
+] as const;
 
 interface LinkDraft {
   note: string;
@@ -286,15 +299,34 @@ function normalizeCategoryName(raw: unknown): string | null {
   }
 
   const lower = value.toLowerCase();
-  if (lower.includes("ai") || lower.includes("머신러닝") || lower.includes("개발") || lower.includes("프로그래밍")) return "AI/개발";
+  if (lower.includes("ai") || lower.includes("머신러닝") || lower.includes("개발") || lower.includes("프로그래밍")) return "인공지능/개발";
   if (lower.includes("data") || lower.includes("데이터") || lower.includes("infra") || lower.includes("인프라") || lower.includes("보안")) return "데이터/인프라";
-  if (lower.includes("비즈니스") || lower.includes("business") || lower.includes("경제") || lower.includes("startup") || lower.includes("디자인")) return "비즈니스/경제";
-  if (lower.includes("투자") || lower.includes("금융") || lower.includes("finance")) return "투자/금융";
+  if (lower.includes("비즈니스") || lower.includes("business") || lower.includes("경제") || lower.includes("startup") || lower.includes("디자인")) return "비즈니스/금융";
+  if (lower.includes("투자") || lower.includes("금융") || lower.includes("finance") || lower.includes("주식")) return "비즈니스/금융";
   if (lower.includes("과학") || lower.includes("science") || lower.includes("헬스") || lower.includes("바이오") || lower.includes("health")) return "과학/헬스";
   if (lower.includes("정치") || lower.includes("사회") || lower.includes("정책") || lower.includes("policy")) return "사회/정책";
-  if (lower.includes("교육") || lower.includes("커리어") || lower.includes("career") || lower.includes("study")) return "교육/커리어";
+  if (lower.includes("교육") || lower.includes("커리어") || lower.includes("career") || lower.includes("study")) return "사회/정책";
   if (lower.includes("문화") || lower.includes("라이프") || lower.includes("lifestyle")) return "라이프/문화";
-  return value;
+  return "기타";
+}
+
+function pickAutoCollectionColor(collectionList: Collection[], seed = ""): string {
+  const used = new Set(
+    collectionList
+      .map((item) => (item.color || "").trim().toLowerCase())
+      .filter((value) => value.length > 0)
+  );
+  const firstUnused = COLLECTION_COLOR_PRESET.find((color) => !used.has(color.toLowerCase()));
+  if (firstUnused) {
+    return firstUnused;
+  }
+
+  let hash = 0;
+  const source = seed || String(collectionList.length);
+  for (let i = 0; i < source.length; i += 1) {
+    hash = (hash * 31 + source.charCodeAt(i)) >>> 0;
+  }
+  return COLLECTION_COLOR_PRESET[hash % COLLECTION_COLOR_PRESET.length];
 }
 
 function mapLinkRow(row: any): LinkItem {
@@ -890,14 +922,20 @@ export default function App() {
 
   async function handleCreateCollection(event: React.FormEvent) {
     event.preventDefault();
-    if (!session || !collectionName.trim()) {
+    const trimmedName = collectionName.trim();
+    if (!session || !trimmedName) {
       return;
     }
 
-    const payload = {
-      name: collectionName.trim(),
-      color: collectionColor
-    };
+    const payload = editingCollectionId
+      ? {
+          name: trimmedName,
+          color: collectionColor
+        }
+      : {
+          name: trimmedName,
+          color: pickAutoCollectionColor(collections, trimmedName)
+        };
 
     const { error } = editingCollectionId
       ? await supabase.from("collections").update(payload).eq("id", editingCollectionId)
@@ -914,7 +952,7 @@ export default function App() {
     }
 
     setCollectionName("");
-    setCollectionColor("#5f7df3");
+    setCollectionColor(COLLECTION_COLOR_PRESET[0]);
     setEditingCollectionId(null);
     await loadCollections();
   }
@@ -1419,12 +1457,7 @@ export default function App() {
     [links, statusFilter]
   );
 
-  const categoryMenu = useMemo(() => {
-    const fromLinks = links
-      .map((item) => (item.category || "").trim())
-      .filter((value) => value.length > 0);
-    return Array.from(new Set([...CATEGORY_BASE_MENU, ...fromLinks]));
-  }, [links]);
+  const categoryMenu = useMemo(() => [...CATEGORY_BASE_MENU], []);
 
   const categoryStats = useMemo(() => {
     return categoryMenu.map((category) => ({
@@ -1700,8 +1733,9 @@ export default function App() {
                 placeholder="컬렉션 이름"
                 required
               />
+              {!editingCollectionId && <p className="muted mini-hint">색상은 자동으로 배정됩니다. 필요하면 수정에서 바꿀 수 있어요.</p>}
               <div className="sidebar-collection-row">
-                <input type="color" value={collectionColor} onChange={(event) => setCollectionColor(event.target.value)} />
+                {editingCollectionId && <input type="color" value={collectionColor} onChange={(event) => setCollectionColor(event.target.value)} />}
                 <button type="submit">{editingCollectionId ? "수정" : "+ 컬렉션 추가"}</button>
                 {editingCollectionId && (
                   <button
@@ -1899,6 +1933,13 @@ export default function App() {
 
             {!loadingLinks &&
               visibleLinks.map((link) => {
+                const displayTags = Array.from(
+                  new Set(
+                    [...(Array.isArray(link.tags) ? link.tags : []), ...(Array.isArray(link.keywords) ? link.keywords : [])]
+                      .map((item) => item.trim())
+                      .filter((item) => item.length > 0)
+                  )
+                );
                 return (
                   <article
                     key={link.id}
@@ -1956,7 +1997,7 @@ export default function App() {
                     </div>
 
                     {link.summary && <p className="summary">{link.summary}</p>}
-                    {link.keywords.length > 0 && <p className="keywords">#{link.keywords.join(" #")}</p>}
+                    {displayTags.length > 0 && <p className="keywords">#{displayTags.join(" #")}</p>}
                     {link.ai_error && <p className="error-text">AI 오류: {link.ai_error}</p>}
 
                     <div className="card-actions">
@@ -2220,9 +2261,18 @@ export default function App() {
               </div>
               <div className="detail-scroll">
                 <p className="detail-title">{selectedLink.title || selectedLink.url}</p>
-                <a href={selectedLink.url} target="_blank" rel="noreferrer">
-                  {selectedLink.url}
-                </a>
+                <div className="detail-link-row">
+                  <button
+                    type="button"
+                    className="detail-link-btn"
+                    onClick={() => window.open(selectedLink.url, "_blank", "noopener,noreferrer")}
+                  >
+                    원문 열기 ↗
+                  </button>
+                  <span className="detail-link-host" title={selectedLink.url}>
+                    {getUrlHostLabel(selectedLink.url)}
+                  </span>
+                </div>
 
                 <div className="detail-meta">
                   <span>{formatDateLabel(selectedLink.created_at)}</span>
