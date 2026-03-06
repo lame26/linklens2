@@ -98,7 +98,21 @@ type StatusFilter = "all" | LinkStatus;
 type ThemeMode = "dark" | "light";
 type MainTab = "library" | "settings";
 type FontScaleMode = "small" | "normal" | "large";
+type SummaryLengthMode = "short" | "medium" | "long";
+type SummaryStyleMode = "neutral" | "easy" | "insight";
 const DETAIL_STATUS_ORDER: LinkStatus[] = ["unread", "reading", "archived"];
+const SUMMARY_LENGTH_ORDER: SummaryLengthMode[] = ["short", "medium", "long"];
+const SUMMARY_STYLE_ORDER: SummaryStyleMode[] = ["neutral", "easy", "insight"];
+const SUMMARY_LENGTH_LABEL: Record<SummaryLengthMode, string> = {
+  short: "짧게",
+  medium: "보통",
+  long: "길게"
+};
+const SUMMARY_STYLE_LABEL: Record<SummaryStyleMode, string> = {
+  neutral: "객관",
+  easy: "쉽게",
+  insight: "인사이트"
+};
 
 const CATEGORY_BASE_MENU = [
   "정치",
@@ -734,6 +748,12 @@ export default function App() {
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [nextPassword, setNextPassword] = useState("");
   const [nextPasswordConfirm, setNextPasswordConfirm] = useState("");
+  const [summaryLengthMode, setSummaryLengthMode] = useState<SummaryLengthMode>("medium");
+  const [summaryStyleMode, setSummaryStyleMode] = useState<SummaryStyleMode>("neutral");
+  const [summaryFocusText, setSummaryFocusText] = useState("");
+  const [summaryCustomPrompt, setSummaryCustomPrompt] = useState("");
+  const [loadingAiPreferences, setLoadingAiPreferences] = useState(false);
+  const [savingAiPreferences, setSavingAiPreferences] = useState(false);
   const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
 
   const [collectionName, setCollectionName] = useState("");
@@ -899,6 +919,14 @@ export default function App() {
     setLinks([]);
     setCollections([]);
     setDrafts({});
+    resetAiPreferenceState();
+  }
+
+  function resetAiPreferenceState(): void {
+    setSummaryLengthMode("medium");
+    setSummaryStyleMode("neutral");
+    setSummaryFocusText("");
+    setSummaryCustomPrompt("");
   }
 
   useEffect(() => {
@@ -931,6 +959,58 @@ export default function App() {
     }
 
     setCollections((data || []) as Collection[]);
+  }, [session]);
+
+  const loadAiPreferences = useCallback(async () => {
+    if (!session) {
+      resetAiPreferenceState();
+      return;
+    }
+
+    setLoadingAiPreferences(true);
+    try {
+      const accessToken = await getFreshAccessToken();
+      if (!accessToken) {
+        throw new Error("인증이 만료되었습니다. 다시 로그인해 주세요.");
+      }
+
+      const response = await withTimeout(
+        fetch(toApiUrl("/api/v1/ai/preferences"), {
+          method: "GET",
+          headers: {
+            authorization: `Bearer ${accessToken}`
+          }
+        }),
+        REQUEST_TIMEOUT_MS,
+        "AI 설정 조회"
+      );
+      if (!response.ok) {
+        throw new Error(await parseResponseError(response));
+      }
+
+      const payload = (await response.json().catch(() => null)) as
+        | {
+            preferences?: {
+              summaryLength?: SummaryLengthMode;
+              summaryStyle?: SummaryStyleMode;
+              summaryFocus?: string;
+              customPrompt?: string;
+            };
+          }
+        | null;
+      const pref = payload?.preferences;
+      const nextLength = pref?.summaryLength;
+      const nextStyle = pref?.summaryStyle;
+      setSummaryLengthMode(nextLength === "short" || nextLength === "medium" || nextLength === "long" ? nextLength : "medium");
+      setSummaryStyleMode(nextStyle === "neutral" || nextStyle === "easy" || nextStyle === "insight" ? nextStyle : "neutral");
+      setSummaryFocusText((pref?.summaryFocus || "").slice(0, 120));
+      setSummaryCustomPrompt((pref?.customPrompt || "").slice(0, 500));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setErrorMessage(`AI 요약 설정 조회 실패: ${message}`);
+    } finally {
+      setLoadingAiPreferences(false);
+    }
   }, [session]);
 
   const loadLinks = useCallback(async (options?: { silent?: boolean; skipCounts?: boolean }) => {
@@ -1163,8 +1243,8 @@ export default function App() {
       return;
     }
 
-    void Promise.all([loadCollections(), loadLinks()]);
-  }, [session, loadCollections, loadLinks]);
+    void Promise.all([loadCollections(), loadLinks(), loadAiPreferences()]);
+  }, [session, loadCollections, loadLinks, loadAiPreferences]);
 
   useEffect(() => {
     if (!isAddModalOpen || !session) {
@@ -1367,6 +1447,72 @@ export default function App() {
     } finally {
       setUpdatingPassword(false);
     }
+  }
+
+  async function handleSaveAiPreferences(): Promise<void> {
+    if (!session || savingAiPreferences) {
+      return;
+    }
+
+    setSavingAiPreferences(true);
+    setErrorMessage(null);
+    try {
+      const accessToken = await getFreshAccessToken();
+      if (!accessToken) {
+        throw new Error("인증이 만료되었습니다. 다시 로그인해 주세요.");
+      }
+
+      const response = await withTimeout(
+        fetch(toApiUrl("/api/v1/ai/preferences"), {
+          method: "PATCH",
+          headers: {
+            "content-type": "application/json",
+            authorization: `Bearer ${accessToken}`
+          },
+          body: JSON.stringify({
+            summaryLength: summaryLengthMode,
+            summaryStyle: summaryStyleMode,
+            summaryFocus: summaryFocusText,
+            customPrompt: summaryCustomPrompt
+          })
+        }),
+        REQUEST_TIMEOUT_MS,
+        "AI 설정 저장"
+      );
+
+      if (!response.ok) {
+        throw new Error(await parseResponseError(response));
+      }
+
+      const payload = (await response.json().catch(() => null)) as
+        | {
+            preferences?: {
+              summaryLength?: SummaryLengthMode;
+              summaryStyle?: SummaryStyleMode;
+              summaryFocus?: string;
+              customPrompt?: string;
+            };
+          }
+        | null;
+      const pref = payload?.preferences;
+      const nextLength = pref?.summaryLength;
+      const nextStyle = pref?.summaryStyle;
+      setSummaryLengthMode(nextLength === "short" || nextLength === "medium" || nextLength === "long" ? nextLength : summaryLengthMode);
+      setSummaryStyleMode(nextStyle === "neutral" || nextStyle === "easy" || nextStyle === "insight" ? nextStyle : summaryStyleMode);
+      setSummaryFocusText((pref?.summaryFocus || "").slice(0, 120));
+      setSummaryCustomPrompt((pref?.customPrompt || "").slice(0, 500));
+      setToast({ kind: "ok", message: "AI 요약 설정이 저장되었습니다." });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setErrorMessage(`AI 요약 설정 저장 실패: ${message}`);
+      setToast({ kind: "err", message: "AI 요약 설정 저장 실패" });
+    } finally {
+      setSavingAiPreferences(false);
+    }
+  }
+
+  function handleResetAiPreferencesDraft(): void {
+    resetAiPreferenceState();
   }
 
   async function handleDeleteAccount(): Promise<void> {
@@ -2883,6 +3029,81 @@ export default function App() {
                     </button>
                   </div>
                   <p className="muted">내보내기는 삭제되지 않은 링크만 포함합니다.</p>
+                </article>
+
+                <article className="settings-card">
+                  <h3>AI 요약 설정</h3>
+                  <p className="muted">원하는 내용과 분량으로 요약을 커스터마이징합니다. 저장 후 다음 AI 실행부터 적용됩니다.</p>
+                  <div className="settings-control">
+                    <span>요약 분량</span>
+                    <div className="chip-row">
+                      {SUMMARY_LENGTH_ORDER.map((mode) => (
+                        <button
+                          key={mode}
+                          type="button"
+                          className={`chip ${summaryLengthMode === mode ? "active" : ""}`}
+                          onClick={() => setSummaryLengthMode(mode)}
+                        >
+                          {SUMMARY_LENGTH_LABEL[mode]}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="settings-control">
+                    <span>요약 스타일</span>
+                    <div className="chip-row">
+                      {SUMMARY_STYLE_ORDER.map((mode) => (
+                        <button
+                          key={mode}
+                          type="button"
+                          className={`chip ${summaryStyleMode === mode ? "active" : ""}`}
+                          onClick={() => setSummaryStyleMode(mode)}
+                        >
+                          {SUMMARY_STYLE_LABEL[mode]}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="settings-form-grid">
+                    <label>
+                      원하는 내용 (핵심 포커스)
+                      <input
+                        value={summaryFocusText}
+                        onChange={(event) => setSummaryFocusText(event.target.value.slice(0, 120))}
+                        placeholder="예: 정책 영향, 투자 시사점, 핵심 수치 중심"
+                        maxLength={120}
+                      />
+                    </label>
+                    <label>
+                      커스텀 프롬프트
+                      <textarea
+                        value={summaryCustomPrompt}
+                        onChange={(event) => setSummaryCustomPrompt(event.target.value.slice(0, 500))}
+                        rows={4}
+                        placeholder="예: 근거와 수치를 우선하고, 마지막에 1줄 결론을 추가해줘."
+                        maxLength={500}
+                      />
+                    </label>
+                  </div>
+                  <div className="settings-actions">
+                    <button
+                      type="button"
+                      className="ghost"
+                      onClick={() => void handleSaveAiPreferences()}
+                      disabled={savingAiPreferences || loadingAiPreferences}
+                    >
+                      {savingAiPreferences ? "AI 설정 저장 중..." : "AI 설정 저장"}
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost"
+                      onClick={handleResetAiPreferencesDraft}
+                      disabled={savingAiPreferences || loadingAiPreferences}
+                    >
+                      기본값으로 되돌리기
+                    </button>
+                  </div>
+                  {loadingAiPreferences && <p className="muted">AI 요약 설정 불러오는 중...</p>}
                 </article>
 
                 <article className="settings-card">

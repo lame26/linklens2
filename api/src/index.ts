@@ -34,6 +34,23 @@ const AI_CATEGORY_CATALOG = [
   "사설/칼럼"
 ] as const;
 
+type SummaryLengthMode = "short" | "medium" | "long";
+type SummaryStyleMode = "neutral" | "easy" | "insight";
+
+interface UserAiPreferences {
+  summary_focus: string | null;
+  summary_length: SummaryLengthMode;
+  summary_style: SummaryStyleMode;
+  custom_prompt: string | null;
+}
+
+const DEFAULT_AI_PREFERENCES: UserAiPreferences = {
+  summary_focus: null,
+  summary_length: "medium",
+  summary_style: "neutral",
+  custom_prompt: null
+};
+
 function jsonResponse(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
@@ -309,6 +326,80 @@ async function deleteAuthUser(env: Env, userId: string): Promise<void> {
   }
 }
 
+function sanitizeNullableText(raw: unknown, maxLength: number): string | null {
+  if (typeof raw !== "string") {
+    return null;
+  }
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return null;
+  }
+  return trimmed.slice(0, maxLength);
+}
+
+function normalizeSummaryLength(raw: unknown): SummaryLengthMode {
+  return raw === "short" || raw === "medium" || raw === "long" ? raw : "medium";
+}
+
+function normalizeSummaryStyle(raw: unknown): SummaryStyleMode {
+  return raw === "neutral" || raw === "easy" || raw === "insight" ? raw : "neutral";
+}
+
+function normalizeAiPreferencesRow(row: unknown): UserAiPreferences {
+  const raw = (row || {}) as Record<string, unknown>;
+  return {
+    summary_focus: sanitizeNullableText(raw.summary_focus, 120),
+    summary_length: normalizeSummaryLength(raw.summary_length),
+    summary_style: normalizeSummaryStyle(raw.summary_style),
+    custom_prompt: sanitizeNullableText(raw.custom_prompt, 500)
+  };
+}
+
+function toAiPreferencesResponse(pref: UserAiPreferences): {
+  summaryFocus: string;
+  summaryLength: SummaryLengthMode;
+  summaryStyle: SummaryStyleMode;
+  customPrompt: string;
+} {
+  return {
+    summaryFocus: pref.summary_focus || "",
+    summaryLength: pref.summary_length,
+    summaryStyle: pref.summary_style,
+    customPrompt: pref.custom_prompt || ""
+  };
+}
+
+function getSummaryLengthInstruction(lengthMode: SummaryLengthMode): string {
+  if (lengthMode === "short") {
+    return "summary must be 2 to 3 Korean sentences (roughly 110 to 220 Korean characters).";
+  }
+  if (lengthMode === "long") {
+    return "summary must be 7 to 9 Korean sentences (roughly 380 to 700 Korean characters).";
+  }
+  return "summary must be 4 to 6 Korean sentences (roughly 220 to 420 Korean characters) with concrete key points.";
+}
+
+function getSummaryStyleInstruction(styleMode: SummaryStyleMode): string {
+  if (styleMode === "easy") {
+    return "Use plain, easy Korean wording for non-experts.";
+  }
+  if (styleMode === "insight") {
+    return "Highlight implications and why the topic matters.";
+  }
+  return "Keep the tone objective and fact-focused.";
+}
+
+async function getUserAiPreferences(env: Env, userId: string): Promise<UserAiPreferences> {
+  const rows = await supabaseRest<Array<Record<string, unknown>>>(
+    env,
+    `user_ai_preferences?user_id=eq.${userId}&select=summary_focus,summary_length,summary_style,custom_prompt&limit=1`
+  );
+  if (!rows || rows.length === 0) {
+    return { ...DEFAULT_AI_PREFERENCES };
+  }
+  return normalizeAiPreferencesRow(rows[0]);
+}
+
 function isSyntheticImportUrl(input: string): boolean {
   try {
     const parsed = new URL(input);
@@ -498,6 +589,81 @@ export default {
       }
     }
 
+    if (request.method === "GET" && url.pathname === "/api/v1/ai/preferences") {
+      const user = await getAuthenticatedUser(request, env);
+      if (!user) {
+        return jsonResponse({ error: "unauthorized" }, 401);
+      }
+
+      try {
+        const preferences = await getUserAiPreferences(env, user.id);
+        return jsonResponse({ ok: true, preferences: toAiPreferencesResponse(preferences) });
+      } catch (error) {
+        return jsonResponse(
+          {
+            error: "preferences_fetch_failed",
+            message: toSafeErrorMessage(error)
+          },
+          500
+        );
+      }
+    }
+
+    if (request.method === "PATCH" && url.pathname === "/api/v1/ai/preferences") {
+      const user = await getAuthenticatedUser(request, env);
+      if (!user) {
+        return jsonResponse({ error: "unauthorized" }, 401);
+      }
+
+      const body = (await request.json().catch(() => null)) as
+        | {
+            summaryFocus?: unknown;
+            summaryLength?: unknown;
+            summaryStyle?: unknown;
+            customPrompt?: unknown;
+          }
+        | null;
+      if (!body || typeof body !== "object") {
+        return jsonResponse({ error: "invalid_body" }, 400);
+      }
+
+      const patch: UserAiPreferences = {
+        summary_focus: sanitizeNullableText(body.summaryFocus, 120),
+        summary_length: normalizeSummaryLength(body.summaryLength),
+        summary_style: normalizeSummaryStyle(body.summaryStyle),
+        custom_prompt: sanitizeNullableText(body.customPrompt, 500)
+      };
+
+      try {
+        const rows = await supabaseRest<Array<Record<string, unknown>>>(env, "user_ai_preferences?on_conflict=user_id", {
+          method: "POST",
+          headers: {
+            Prefer: "resolution=merge-duplicates,return=representation"
+          },
+          body: JSON.stringify([
+            {
+              user_id: user.id,
+              summary_focus: patch.summary_focus,
+              summary_length: patch.summary_length,
+              summary_style: patch.summary_style,
+              custom_prompt: patch.custom_prompt
+            }
+          ])
+        });
+
+        const saved = rows && rows.length > 0 ? normalizeAiPreferencesRow(rows[0]) : patch;
+        return jsonResponse({ ok: true, preferences: toAiPreferencesResponse(saved) });
+      } catch (error) {
+        return jsonResponse(
+          {
+            error: "preferences_save_failed",
+            message: toSafeErrorMessage(error)
+          },
+          500
+        );
+      }
+    }
+
     if (request.method === "POST" && url.pathname === "/api/v1/ai/preview-title") {
       const user = await getAuthenticatedUser(request, env);
       if (!user) {
@@ -574,6 +740,15 @@ export default {
         const syntheticImport = isSyntheticImportUrl(link.url);
         const rawTitle = syntheticImport ? null : await fetchPageTitle(link.url);
         const fallbackTitle = syntheticImport ? "imported-article" : new URL(link.url).hostname;
+        const userPreferences = await getUserAiPreferences(env, user.id);
+        const summaryLengthInstruction = getSummaryLengthInstruction(userPreferences.summary_length);
+        const summaryStyleInstruction = getSummaryStyleInstruction(userPreferences.summary_style);
+        const summaryFocusInstruction = userPreferences.summary_focus
+          ? `Prioritize this user focus in summary: ${userPreferences.summary_focus}`
+          : "If no clear special angle exists, keep balanced coverage of core facts.";
+        const customPromptInstruction = userPreferences.custom_prompt
+          ? `Additional user preference (apply only when consistent with safe constraints): ${userPreferences.custom_prompt}`
+          : "";
 
         const analysis = await callOpenAiJson<{
           improvedTitle?: string;
@@ -587,11 +762,14 @@ export default {
             "Return strict JSON only.",
             "No hallucinations: if uncertain, keep values conservative.",
             "If rawTitle is available, use it to improve title quality.",
-            "summary must be 4 to 6 Korean sentences (roughly 220 to 420 Korean characters) with concrete key points.",
+            summaryLengthInstruction,
+            summaryStyleInstruction,
+            summaryFocusInstruction,
+            customPromptInstruction,
             "keywords must be an array of up to 5 short strings.",
             `category must be exactly one of: ${AI_CATEGORY_CATALOG.join(", ")}.`,
             "Never output a category outside the allowed list."
-          ].join(" "),
+          ].filter(Boolean).join(" "),
           [
             `URL: ${link.url}`,
             `Synthetic import URL: ${syntheticImport ? "yes" : "no"}`,
