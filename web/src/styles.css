@@ -679,6 +679,11 @@ textarea {
   gap: 12px;
 }
 
+.toolbar-left {
+  display: grid;
+  gap: 8px;
+}
+
 .settings-panel {
   padding: 16px;
 }
@@ -770,6 +775,25 @@ textarea {
   background: color-mix(in srgb, var(--brand-soft) 55%, var(--surface-2));
 }
 
+.chip.danger-chip {
+  border-color: color-mix(in srgb, var(--danger) 40%, var(--line));
+  color: var(--danger);
+}
+
+.bulk-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.bulk-count {
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 650;
+  padding: 0 2px;
+}
+
 .view-toggle {
   display: flex;
   gap: 8px;
@@ -833,6 +857,11 @@ textarea {
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--brand) 28%, transparent) inset;
 }
 
+.link-card.multi-selected {
+  border-color: color-mix(in srgb, var(--brand) 50%, var(--line));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--brand) 22%, transparent) inset;
+}
+
 .links-panel.list .link-card {
   border-radius: var(--radius-xs);
   margin-bottom: 8px;
@@ -848,6 +877,24 @@ textarea {
   display: flex;
   gap: 10px;
   align-items: flex-start;
+}
+
+.multi-select-toggle {
+  width: 18px;
+  height: 18px;
+  margin-top: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 18px;
+}
+
+.multi-select-toggle input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--brand);
+  cursor: pointer;
 }
 
 .tile-icon {

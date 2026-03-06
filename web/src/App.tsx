@@ -760,6 +760,7 @@ export default function App() {
   const [collectionColor, setCollectionColor] = useState<string>(COLLECTION_COLOR_PRESET[0]);
   const [editingCollectionId, setEditingCollectionId] = useState<string | null>(null);
   const [selectedLinkId, setSelectedLinkId] = useState<string | null>(null);
+  const [selectedLinkIds, setSelectedLinkIds] = useState<string[]>([]);
   const [toast, setToast] = useState<{ kind: "info" | "ok" | "err"; message: string } | null>(null);
   const [authNotice, setAuthNotice] = useState<string | null>(null);
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -915,12 +916,27 @@ export default function App() {
 
   function clearLocalSessionState(): void {
     setSelectedLinkId(null);
+    setSelectedLinkIds([]);
     setShowUserMenu(false);
     setLinks([]);
     setCollections([]);
     setDrafts({});
     resetAiPreferenceState();
   }
+
+  useEffect(() => {
+    setSelectedLinkIds((prev) => prev.filter((id) => links.some((item) => item.id === id)));
+  }, [links]);
+
+  useEffect(() => {
+    if (mainTab !== "library") {
+      setSelectedLinkIds([]);
+    }
+  }, [mainTab]);
+
+  useEffect(() => {
+    setSelectedLinkIds([]);
+  }, [statusFilter, collectionFilter, categoryFilter, favoriteOnly, showTrash]);
 
   function resetAiPreferenceState(): void {
     setSummaryLengthMode("medium");
@@ -2106,6 +2122,80 @@ export default function App() {
     await loadLinks();
   }
 
+  function toggleSelectLink(linkId: string): void {
+    setSelectedLinkIds((prev) => (prev.includes(linkId) ? prev.filter((id) => id !== linkId) : [...prev, linkId]));
+  }
+
+  function toggleSelectAllVisible(allVisibleSelected: boolean, visibleIds: string[]): void {
+    if (visibleIds.length === 0) {
+      return;
+    }
+
+    setSelectedLinkIds((prev) => {
+      if (allVisibleSelected) {
+        return prev.filter((id) => !visibleIds.includes(id));
+      }
+      const merged = new Set(prev);
+      for (const id of visibleIds) {
+        merged.add(id);
+      }
+      return Array.from(merged);
+    });
+  }
+
+  async function bulkUpdateStatus(targetStatus: "unread" | "reading", targetIds: string[]): Promise<void> {
+    if (targetIds.length === 0) {
+      return;
+    }
+
+    setErrorMessage(null);
+    const { error } = await supabase.from("links").update({ status: targetStatus }).in("id", targetIds).is("deleted_at", null);
+    if (error) {
+      setErrorMessage(`일괄 상태 변경 실패: ${error.message}`);
+      return;
+    }
+
+    setLinks((prev) =>
+      prev.map((item) =>
+        targetIds.includes(item.id)
+          ? {
+              ...item,
+              status: targetStatus
+            }
+          : item
+      )
+    );
+    setSelectedLinkIds((prev) => prev.filter((id) => !targetIds.includes(id)));
+    await loadLinks({ silent: true });
+    setToast({ kind: "ok", message: `${targetIds.length}건을 ${targetStatus === "reading" ? "읽음" : "안읽음"}으로 변경했습니다.` });
+  }
+
+  async function bulkDeleteLinks(targetIds: string[]): Promise<void> {
+    if (targetIds.length === 0) {
+      return;
+    }
+
+    const confirmed = window.confirm(`선택한 링크 ${targetIds.length}건을 삭제할까요?`);
+    if (!confirmed) {
+      return;
+    }
+
+    setErrorMessage(null);
+    const { error } = await supabase
+      .from("links")
+      .update({ deleted_at: new Date().toISOString() })
+      .in("id", targetIds)
+      .is("deleted_at", null);
+    if (error) {
+      setErrorMessage(`일괄 삭제 실패: ${error.message}`);
+      return;
+    }
+
+    setSelectedLinkIds((prev) => prev.filter((id) => !targetIds.includes(id)));
+    await loadLinks({ silent: true });
+    setToast({ kind: "ok", message: `${targetIds.length}건을 삭제했습니다.` });
+  }
+
   async function toggleFavorite(link: LinkItem) {
     const { error } = await supabase
       .from("links")
@@ -2315,6 +2405,10 @@ export default function App() {
     () => (statusFilter === "all" ? links : links.filter((item) => item.status === statusFilter)),
     [links, statusFilter]
   );
+  const visibleLinkIds = useMemo(() => visibleLinks.map((item) => item.id), [visibleLinks]);
+  const selectedVisibleIds = useMemo(() => visibleLinkIds.filter((id) => selectedLinkIds.includes(id)), [visibleLinkIds, selectedLinkIds]);
+  const selectedVisibleCount = selectedVisibleIds.length;
+  const allVisibleSelected = visibleLinks.length > 0 && selectedVisibleCount === visibleLinks.length;
 
   const categoryMenu = useMemo(() => [...CATEGORY_BASE_MENU], []);
 
@@ -2753,26 +2847,65 @@ export default function App() {
             </article>
           </section>
 
-          <section className="panel toolbar-panel">
-            <div className="chip-row">
-              <button type="button" className={`chip ${sortMode === "newest" ? "active" : ""}`} onClick={() => setSortMode("newest")}>
-                최신순
-              </button>
-              <button type="button" className={`chip ${sortMode === "oldest" ? "active" : ""}`} onClick={() => setSortMode("oldest")}>
-                오래된순
-              </button>
-              <button type="button" className={`chip ${sortMode === "rating" ? "active" : ""}`} onClick={() => setSortMode("rating")}>
-                별점순
-              </button>
-              <button
-                type="button"
-                className={`chip ${statusFilter === "unread" ? "active" : ""}`}
-                onClick={() => setStatusFilter((prev) => (prev === "unread" ? "all" : "unread"))}
-              >
-                안읽음만
-              </button>
-            </div>
-            <div className="view-toggle">
+	          <section className="panel toolbar-panel">
+	            <div className="toolbar-left">
+	              <div className="chip-row">
+	                <button type="button" className={`chip ${sortMode === "newest" ? "active" : ""}`} onClick={() => setSortMode("newest")}>
+	                  최신순
+	                </button>
+	                <button type="button" className={`chip ${sortMode === "oldest" ? "active" : ""}`} onClick={() => setSortMode("oldest")}>
+	                  오래된순
+	                </button>
+	                <button type="button" className={`chip ${sortMode === "rating" ? "active" : ""}`} onClick={() => setSortMode("rating")}>
+	                  별점순
+	                </button>
+	                <button
+	                  type="button"
+	                  className={`chip ${statusFilter === "unread" ? "active" : ""}`}
+	                  onClick={() => setStatusFilter((prev) => (prev === "unread" ? "all" : "unread"))}
+	                >
+	                  안읽음만
+	                </button>
+	              </div>
+	              {!showTrash && (
+	                <div className="bulk-toolbar">
+	                  <button
+	                    type="button"
+	                    className={`chip ${allVisibleSelected ? "active" : ""}`}
+	                    onClick={() => toggleSelectAllVisible(allVisibleSelected, visibleLinkIds)}
+	                    disabled={visibleLinks.length === 0}
+	                  >
+	                    {allVisibleSelected ? "전체선택 해제" : "전체선택"}
+	                  </button>
+	                  <span className="bulk-count">{selectedVisibleCount}개 선택</span>
+	                  <button
+	                    type="button"
+	                    className="chip"
+	                    onClick={() => void bulkUpdateStatus("reading", selectedVisibleIds)}
+	                    disabled={selectedVisibleCount === 0}
+	                  >
+	                    읽음으로
+	                  </button>
+	                  <button
+	                    type="button"
+	                    className="chip"
+	                    onClick={() => void bulkUpdateStatus("unread", selectedVisibleIds)}
+	                    disabled={selectedVisibleCount === 0}
+	                  >
+	                    안읽음으로
+	                  </button>
+	                  <button
+	                    type="button"
+	                    className="chip danger-chip"
+	                    onClick={() => void bulkDeleteLinks(selectedVisibleIds)}
+	                    disabled={selectedVisibleCount === 0}
+	                  >
+	                    삭제
+	                  </button>
+	                </div>
+	              )}
+	            </div>
+	            <div className="view-toggle">
               <button
                 type="button"
                 className={`icon-btn ${viewMode === "card" ? "active" : ""}`}
@@ -2807,34 +2940,49 @@ export default function App() {
               </div>
             )}
 
-            {!loadingLinks &&
-              visibleLinks.map((link) => {
-                const displayTags = Array.from(
-                  new Set(
+	            {!loadingLinks &&
+	              visibleLinks.map((link) => {
+	                const displayTags = Array.from(
+	                  new Set(
                     [...(Array.isArray(link.tags) ? link.tags : []), ...(Array.isArray(link.keywords) ? link.keywords : [])]
                       .map((item) => item.trim())
-                      .filter((item) => item.length > 0)
-                  )
-                );
-                return (
-                  <article
-                    key={link.id}
-                    className={`link-card ${selectedLinkId === link.id ? "selected" : ""}`}
-                    onClick={() => openLinkDetail(link)}
-                    role="button"
-                    tabIndex={0}
+	                      .filter((item) => item.length > 0)
+	                  )
+	                );
+	                const isMultiSelected = selectedLinkIds.includes(link.id);
+	                return (
+	                  <article
+	                    key={link.id}
+	                    className={`link-card ${selectedLinkId === link.id ? "selected" : ""} ${isMultiSelected ? "multi-selected" : ""}`}
+	                    onClick={() => openLinkDetail(link)}
+	                    role="button"
+	                    tabIndex={0}
                     onKeyDown={(event) => {
                       if (event.key === "Enter" || event.key === " ") {
                         event.preventDefault();
                         openLinkDetail(link);
                       }
                     }}
-                  >
-                    <header>
-                      <div className="tile-head">
-                        <div className="tile-icon" aria-hidden>
-                          {getUrlHostLabel(link.url).slice(0, 1).toUpperCase()}
-                        </div>
+	                  >
+	                    <header>
+	                      <div className="tile-head">
+	                        <label
+	                          className="multi-select-toggle"
+	                          onClick={(event) => event.stopPropagation()}
+	                          onMouseDown={(event) => event.stopPropagation()}
+	                        >
+	                          <input
+	                            type="checkbox"
+	                            checked={isMultiSelected}
+	                            onChange={() => toggleSelectLink(link.id)}
+	                            onClick={(event) => event.stopPropagation()}
+	                            onKeyDown={(event) => event.stopPropagation()}
+	                            aria-label="항목 선택"
+	                          />
+	                        </label>
+	                        <div className="tile-icon" aria-hidden>
+	                          {getUrlHostLabel(link.url).slice(0, 1).toUpperCase()}
+	                        </div>
                         <div className="link-title-wrap">
                         <div className="link-title-head">
                           {link.status === "unread" && <span className="unread-dot" aria-label="안읽음" />}
