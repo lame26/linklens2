@@ -25,19 +25,14 @@ const REQUIRED_ENV_KEYS: Array<keyof Env> = [
 ];
 
 const AI_CATEGORY_CATALOG = [
-  "AI/머신러닝",
-  "개발/프로그래밍",
-  "데이터/분석",
-  "보안/인프라",
-  "제품/디자인",
-  "스타트업/비즈니스",
+  "AI/개발",
+  "데이터/인프라",
+  "비즈니스/경제",
   "투자/금융",
-  "경제/정책",
-  "과학/기술",
-  "헬스/바이오",
-  "정치/사회",
+  "과학/헬스",
+  "사회/정책",
   "교육/커리어",
-  "문화/라이프",
+  "라이프/문화",
   "기타"
 ] as const;
 
@@ -324,19 +319,14 @@ function normalizeAiCategory(raw: string | undefined): string {
   }
 
   const lower = value.toLowerCase();
-  if (lower.includes("ai") || lower.includes("ml") || lower.includes("머신러닝")) return "AI/머신러닝";
-  if (lower.includes("개발") || lower.includes("프로그래밍") || lower.includes("software") || lower.includes("code")) return "개발/프로그래밍";
-  if (lower.includes("data") || lower.includes("분석")) return "데이터/분석";
-  if (lower.includes("보안") || lower.includes("infra") || lower.includes("인프라") || lower.includes("cloud")) return "보안/인프라";
-  if (lower.includes("디자인") || lower.includes("ux") || lower.includes("ui") || lower.includes("product")) return "제품/디자인";
-  if (lower.includes("startup") || lower.includes("비즈니스") || lower.includes("business")) return "스타트업/비즈니스";
+  if (lower.includes("ai") || lower.includes("ml") || lower.includes("머신러닝") || lower.includes("개발") || lower.includes("프로그래밍") || lower.includes("software") || lower.includes("code")) return "AI/개발";
+  if (lower.includes("data") || lower.includes("분석") || lower.includes("보안") || lower.includes("infra") || lower.includes("인프라") || lower.includes("cloud")) return "데이터/인프라";
+  if (lower.includes("디자인") || lower.includes("ux") || lower.includes("ui") || lower.includes("product") || lower.includes("startup") || lower.includes("비즈니스") || lower.includes("business") || lower.includes("경제")) return "비즈니스/경제";
   if (lower.includes("투자") || lower.includes("금융") || lower.includes("finance")) return "투자/금융";
-  if (lower.includes("경제") || lower.includes("policy") || lower.includes("정책")) return "경제/정책";
-  if (lower.includes("science") || lower.includes("과학") || lower.includes("기술")) return "과학/기술";
-  if (lower.includes("health") || lower.includes("bio") || lower.includes("헬스") || lower.includes("바이오")) return "헬스/바이오";
-  if (lower.includes("정치") || lower.includes("사회") || lower.includes("politic")) return "정치/사회";
+  if (lower.includes("science") || lower.includes("과학") || lower.includes("기술") || lower.includes("health") || lower.includes("bio") || lower.includes("헬스") || lower.includes("바이오")) return "과학/헬스";
+  if (lower.includes("정치") || lower.includes("사회") || lower.includes("politic") || lower.includes("policy") || lower.includes("정책")) return "사회/정책";
   if (lower.includes("교육") || lower.includes("커리어") || lower.includes("career") || lower.includes("study")) return "교육/커리어";
-  if (lower.includes("문화") || lower.includes("lifestyle") || lower.includes("life")) return "문화/라이프";
+  if (lower.includes("문화") || lower.includes("lifestyle") || lower.includes("life") || lower.includes("라이프")) return "라이프/문화";
   return "기타";
 }
 

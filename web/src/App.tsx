@@ -99,21 +99,51 @@ type ThemeMode = "dark" | "light";
 const DETAIL_STATUS_ORDER: LinkStatus[] = ["unread", "reading", "done", "archived"];
 
 const CATEGORY_BASE_MENU = [
-  "AI/머신러닝",
-  "개발/프로그래밍",
-  "데이터/분석",
-  "보안/인프라",
-  "제품/디자인",
-  "스타트업/비즈니스",
+  "AI/개발",
+  "데이터/인프라",
+  "비즈니스/경제",
   "투자/금융",
-  "경제/정책",
-  "과학/기술",
-  "헬스/바이오",
-  "정치/사회",
+  "과학/헬스",
+  "사회/정책",
   "교육/커리어",
-  "문화/라이프",
+  "라이프/문화",
   "기타"
 ] as const;
+
+const CATEGORY_COMPAT_MAP: Record<string, string> = {
+  "AI/머신러닝": "AI/개발",
+  "개발/프로그래밍": "AI/개발",
+  "AI/개발": "AI/개발",
+  "데이터/분석": "데이터/인프라",
+  "보안/인프라": "데이터/인프라",
+  "데이터/인프라": "데이터/인프라",
+  "제품/디자인": "비즈니스/경제",
+  "스타트업/비즈니스": "비즈니스/경제",
+  "경제/정책": "비즈니스/경제",
+  "비즈니스/경제": "비즈니스/경제",
+  "투자/금융": "투자/금융",
+  "과학/기술": "과학/헬스",
+  "헬스/바이오": "과학/헬스",
+  "과학/헬스": "과학/헬스",
+  "정치/사회": "사회/정책",
+  "사회/정책": "사회/정책",
+  "교육/커리어": "교육/커리어",
+  "문화/라이프": "라이프/문화",
+  "라이프/문화": "라이프/문화",
+  "기타": "기타"
+};
+
+const CATEGORY_FILTER_ALIASES: Record<string, string[]> = {
+  "AI/개발": ["AI/개발", "AI/머신러닝", "개발/프로그래밍"],
+  "데이터/인프라": ["데이터/인프라", "데이터/분석", "보안/인프라"],
+  "비즈니스/경제": ["비즈니스/경제", "제품/디자인", "스타트업/비즈니스", "경제/정책"],
+  "투자/금융": ["투자/금융"],
+  "과학/헬스": ["과학/헬스", "과학/기술", "헬스/바이오"],
+  "사회/정책": ["사회/정책", "정치/사회"],
+  "교육/커리어": ["교육/커리어"],
+  "라이프/문화": ["라이프/문화", "문화/라이프"],
+  "기타": ["기타"]
+};
 
 interface LinkDraft {
   note: string;
@@ -240,6 +270,33 @@ function buildImportFallbackUrl(row: ImportArticleRow, index: number): string {
   return `https://www.google.com/search?q=${encodeURIComponent(query)}`;
 }
 
+function normalizeCategoryName(raw: unknown): string | null {
+  if (typeof raw !== "string") {
+    return null;
+  }
+
+  const value = raw.trim();
+  if (!value) {
+    return null;
+  }
+
+  const direct = CATEGORY_COMPAT_MAP[value];
+  if (direct) {
+    return direct;
+  }
+
+  const lower = value.toLowerCase();
+  if (lower.includes("ai") || lower.includes("머신러닝") || lower.includes("개발") || lower.includes("프로그래밍")) return "AI/개발";
+  if (lower.includes("data") || lower.includes("데이터") || lower.includes("infra") || lower.includes("인프라") || lower.includes("보안")) return "데이터/인프라";
+  if (lower.includes("비즈니스") || lower.includes("business") || lower.includes("경제") || lower.includes("startup") || lower.includes("디자인")) return "비즈니스/경제";
+  if (lower.includes("투자") || lower.includes("금융") || lower.includes("finance")) return "투자/금융";
+  if (lower.includes("과학") || lower.includes("science") || lower.includes("헬스") || lower.includes("바이오") || lower.includes("health")) return "과학/헬스";
+  if (lower.includes("정치") || lower.includes("사회") || lower.includes("정책") || lower.includes("policy")) return "사회/정책";
+  if (lower.includes("교육") || lower.includes("커리어") || lower.includes("career") || lower.includes("study")) return "교육/커리어";
+  if (lower.includes("문화") || lower.includes("라이프") || lower.includes("lifestyle")) return "라이프/문화";
+  return value;
+}
+
 function mapLinkRow(row: any): LinkItem {
   const tags = Array.isArray(row?.link_tags)
     ? row.link_tags
@@ -255,7 +312,7 @@ function mapLinkRow(row: any): LinkItem {
     status: row.status,
     rating: row.rating,
     is_favorite: row.is_favorite,
-    category: row.category,
+    category: normalizeCategoryName(row.category),
     summary: row.summary,
     keywords: Array.isArray(row.keywords) ? row.keywords : [],
     collection_id: row.collection_id,
@@ -502,7 +559,8 @@ export default function App() {
     }
 
     if (categoryFilter !== "all") {
-      query = query.eq("category", categoryFilter);
+      const aliases = CATEGORY_FILTER_ALIASES[categoryFilter] || [categoryFilter];
+      query = aliases.length > 1 ? query.in("category", aliases) : query.eq("category", aliases[0]);
     }
 
     if (favoriteOnly) {
@@ -1042,7 +1100,7 @@ export default function App() {
         note: newNote.trim() || null,
         status: newStatus,
         collection_id: newCollectionId || null,
-        category: newCategory || null
+        category: normalizeCategoryName(newCategory) || null
       };
 
       const { data, error }: { data: any; error: any } = await withTimeout(
@@ -1069,7 +1127,7 @@ export default function App() {
         status: data.status,
         rating: data.rating,
         is_favorite: data.is_favorite,
-        category: data.category,
+        category: normalizeCategoryName(data.category),
         summary: data.summary,
         keywords: data.keywords || [],
         collection_id: data.collection_id,
@@ -1223,8 +1281,8 @@ export default function App() {
         }
 
         for (const row of data) {
-          const category = typeof row?.category === "string" ? row.category.trim() : "";
-          if (category.length === 0 && row?.ai_state !== "pending" && typeof row?.id === "string") {
+          const category = normalizeCategoryName(row?.category);
+          if (!category && row?.ai_state !== "pending" && typeof row?.id === "string") {
             targets.push({ id: row.id });
           }
         }
