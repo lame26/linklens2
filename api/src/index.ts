@@ -381,10 +381,10 @@ function getSummaryLengthInstruction(lengthMode: SummaryLengthMode): string {
 
 function getSummaryStyleInstruction(styleMode: SummaryStyleMode): string {
   if (styleMode === "easy") {
-    return "Use plain, easy Korean wording for non-experts.";
+    return "Use very plain Korean wording for non-experts and avoid jargon where possible.";
   }
   if (styleMode === "insight") {
-    return "Highlight implications and why the topic matters.";
+    return "Emphasize implications, significance, and practical meaning.";
   }
   return "Keep the tone objective and fact-focused.";
 }
@@ -747,7 +747,7 @@ export default {
           ? `Prioritize this user focus in summary: ${userPreferences.summary_focus}`
           : "If no clear special angle exists, keep balanced coverage of core facts.";
         const customPromptInstruction = userPreferences.custom_prompt
-          ? `Additional user preference (apply only when consistent with safe constraints): ${userPreferences.custom_prompt}`
+          ? `User custom summary instruction (highest priority for summary): ${userPreferences.custom_prompt}`
           : "";
 
         const analysis = await callOpenAiJson<{
@@ -762,6 +762,8 @@ export default {
             "Return strict JSON only.",
             "No hallucinations: if uncertain, keep values conservative.",
             "If rawTitle is available, use it to improve title quality.",
+            "You MUST apply user summary preferences strictly when generating summary.",
+            "When a custom summary instruction is provided, prioritize it unless it conflicts with JSON format or safety.",
             summaryLengthInstruction,
             summaryStyleInstruction,
             summaryFocusInstruction,
@@ -776,6 +778,10 @@ export default {
             `Raw title: ${rawTitle ?? ""}`,
             `Current title: ${link.title ?? ""}`,
             `User note: ${link.note ?? ""}`,
+            `Summary length mode: ${userPreferences.summary_length}`,
+            `Summary style mode: ${userPreferences.summary_style}`,
+            `Summary focus: ${userPreferences.summary_focus ?? ""}`,
+            `Summary custom prompt: ${userPreferences.custom_prompt ?? ""}`,
             "Return format: {\"improvedTitle\":\"\",\"summary\":\"\",\"keywords\":[\"\"],\"category\":\"\"}"
           ].join("\n")
         );
