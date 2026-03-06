@@ -60,6 +60,9 @@ async function withTimeout<T>(promise: PromiseLike<T>, timeoutMs: number, label:
 
 async function parseResponseError(response: Response): Promise<string> {
   const text = (await response.text()).trim();
+  if (response.status === 401) {
+    return "인증이 만료되었습니다. 다시 로그인해 주세요.";
+  }
   if (!text) {
     return `HTTP ${response.status}`;
   }
@@ -82,6 +85,11 @@ async function parseResponseError(response: Response): Promise<string> {
   }
 
   return text;
+}
+
+async function getFreshAccessToken(): Promise<string | null> {
+  const { data } = await supabase.auth.getSession();
+  return data.session?.access_token ?? null;
 }
 
 type SortMode = "newest" | "oldest" | "rating";
@@ -571,13 +579,17 @@ export default function App() {
       if (!session) {
         throw new Error("세션이 만료되었습니다. 다시 로그인해 주세요.");
       }
+      const accessToken = await getFreshAccessToken();
+      if (!accessToken) {
+        throw new Error("인증이 만료되었습니다. 다시 로그인해 주세요.");
+      }
 
       const response = await withTimeout(
         fetch(toApiUrl("/api/v1/ai/analyze-link"), {
           method: "POST",
           headers: {
             "content-type": "application/json",
-            authorization: `Bearer ${session.access_token}`
+            authorization: `Bearer ${accessToken}`
           },
           body: JSON.stringify({ linkId })
         }),
@@ -665,11 +677,15 @@ export default function App() {
     const timer = setTimeout(async () => {
       setPreviewLoading(true);
       try {
+        const accessToken = await getFreshAccessToken();
+        if (!accessToken) {
+          throw new Error("인증이 만료되었습니다. 다시 로그인해 주세요.");
+        }
         const response = await fetch(toApiUrl("/api/v1/ai/preview-title"), {
           method: "POST",
           headers: {
             "content-type": "application/json",
-            authorization: `Bearer ${session.access_token}`
+            authorization: `Bearer ${accessToken}`
           },
           body: JSON.stringify({ url: targetUrl }),
           signal: controller.signal
