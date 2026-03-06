@@ -731,8 +731,10 @@ export default function App() {
   const [deletingAll, setDeletingAll] = useState(false);
   const [bulkAiRunning, setBulkAiRunning] = useState(false);
   const [updatingPassword, setUpdatingPassword] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
   const [nextPassword, setNextPassword] = useState("");
   const [nextPasswordConfirm, setNextPasswordConfirm] = useState("");
+  const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
 
   const [collectionName, setCollectionName] = useState("");
   const [collectionColor, setCollectionColor] = useState<string>(COLLECTION_COLOR_PRESET[0]);
@@ -871,6 +873,12 @@ export default function App() {
         return;
       }
 
+      if (isHelpModalOpen && event.key === "Escape") {
+        event.preventDefault();
+        setIsHelpModalOpen(false);
+        return;
+      }
+
       if (!selectedLink) {
         return;
       }
@@ -883,7 +891,15 @@ export default function App() {
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [selectedLink, isAddModalOpen]);
+  }, [selectedLink, isAddModalOpen, isHelpModalOpen]);
+
+  function clearLocalSessionState(): void {
+    setSelectedLinkId(null);
+    setShowUserMenu(false);
+    setLinks([]);
+    setCollections([]);
+    setDrafts({});
+  }
 
   useEffect(() => {
     if (!showUserMenu) {
@@ -1301,11 +1317,7 @@ export default function App() {
 
     setLogoutLoading(true);
     setErrorMessage(null);
-    setSelectedLinkId(null);
-    setShowUserMenu(false);
-    setLinks([]);
-    setCollections([]);
-    setDrafts({});
+    clearLocalSessionState();
     setSession(null);
     setAuthReady(true);
 
@@ -1354,6 +1366,66 @@ export default function App() {
       setToast({ kind: "err", message: "비밀번호 변경 실패" });
     } finally {
       setUpdatingPassword(false);
+    }
+  }
+
+  async function handleDeleteAccount(): Promise<void> {
+    if (!session || deletingAccount) {
+      return;
+    }
+
+    const confirmed = window.confirm("회원 탈퇴 시 모든 링크/컬렉션/태그 데이터가 즉시 삭제되고 복구할 수 없습니다.\n정말 진행할까요?");
+    if (!confirmed) {
+      return;
+    }
+
+    const phrase = window.prompt("확인을 위해 DELETE 를 입력해 주세요.");
+    if (phrase !== "DELETE") {
+      setToast({ kind: "info", message: "회원 탈퇴가 취소되었습니다." });
+      return;
+    }
+
+    setDeletingAccount(true);
+    setErrorMessage(null);
+    setShowUserMenu(false);
+
+    try {
+      const accessToken = await getFreshAccessToken();
+      if (!accessToken) {
+        throw new Error("인증이 만료되었습니다. 다시 로그인해 주세요.");
+      }
+
+      const response = await withTimeout(
+        fetch(toApiUrl("/api/v1/account/delete"), {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: `Bearer ${accessToken}`
+          }
+        }),
+        REQUEST_TIMEOUT_MS,
+        "회원 탈퇴"
+      );
+
+      if (!response.ok) {
+        throw new Error(await parseResponseError(response));
+      }
+
+      await supabase.auth.signOut().catch(() => null);
+      clearLocalSessionState();
+      setSession(null);
+      setAuthReady(true);
+      setAuthMode("login");
+      setAuthNotice("회원 탈퇴가 완료되었습니다.");
+      setPassword("");
+      setNextPassword("");
+      setNextPasswordConfirm("");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setErrorMessage(`회원 탈퇴 실패: ${message}`);
+      setToast({ kind: "err", message: "회원 탈퇴 실패" });
+    } finally {
+      setDeletingAccount(false);
     }
   }
 
@@ -2482,10 +2554,12 @@ export default function App() {
                   <button
                     type="button"
                     className="ghost"
-                    onClick={handleLogout}
-                    disabled={logoutLoading}
+                    onClick={() => {
+                      setIsHelpModalOpen(true);
+                      setShowUserMenu(false);
+                    }}
                   >
-                    {logoutLoading ? "로그아웃 중..." : "로그아웃"}
+                    도움말
                   </button>
                   <button
                     type="button"
@@ -2496,6 +2570,14 @@ export default function App() {
                     }}
                   >
                     설정
+                  </button>
+                  <button
+                    type="button"
+                    className="ghost"
+                    onClick={handleLogout}
+                    disabled={logoutLoading}
+                  >
+                    {logoutLoading ? "로그아웃 중..." : "로그아웃"}
                   </button>
                 </div>
               )}
@@ -2751,7 +2833,7 @@ export default function App() {
               <div className="settings-grid">
                 <article className="settings-card">
                   <h3>데이터 관리</h3>
-                  <p className="muted">기사 가져오기/내보내기와 전체 삭제를 관리합니다.</p>
+                  <p className="muted">기사 가져오기/내보내기와 AI 일괄 실행을 관리합니다.</p>
                   <div className="settings-control">
                     <span>가져오기 후 AI 자동 분석</span>
                     <div className="chip-row">
@@ -2855,7 +2937,7 @@ export default function App() {
 
                 <article className="settings-card">
                   <h3>보안</h3>
-                  <p className="muted">현재 계정 비밀번호를 변경합니다.</p>
+                  <p className="muted">비밀번호 변경과 계정 정리를 관리합니다.</p>
                   <div className="settings-form-grid">
                     <label>
                       새 비밀번호
@@ -2883,14 +2965,26 @@ export default function App() {
                       {updatingPassword ? "비밀번호 변경 중..." : "비밀번호 변경"}
                     </button>
                   </div>
-                </article>
-
-                <article className="settings-card danger-zone">
-                  <h3>위험 구역</h3>
-                  <p className="muted">모든 링크를 영구 삭제합니다. 되돌릴 수 없습니다.</p>
+                  <div className="settings-control">
+                    <span>데이터 / 계정</span>
+                    <p className="muted">삭제 작업은 복구할 수 없습니다.</p>
+                  </div>
                   <div className="settings-actions">
                     <button type="button" className="danger-solid" onClick={() => void handleDeleteAllLinks()} disabled={deletingAll}>
                       {deletingAll ? "전체 삭제 중..." : "기사 전체 삭제"}
+                    </button>
+                    <button type="button" className="danger-solid" onClick={() => void handleDeleteAccount()} disabled={deletingAccount}>
+                      {deletingAccount ? "회원 탈퇴 처리중..." : "회원 탈퇴"}
+                    </button>
+                  </div>
+                </article>
+
+                <article className="settings-card">
+                  <h3>도움말</h3>
+                  <p className="muted">기본 사용법만 간단하게 확인합니다.</p>
+                  <div className="settings-actions">
+                    <button type="button" className="ghost" onClick={() => setIsHelpModalOpen(true)}>
+                      도움말 열기
                     </button>
                   </div>
                 </article>
@@ -3030,6 +3124,26 @@ export default function App() {
                   </button>
                 </div>
               </form>
+            </section>
+          </div>
+        )}
+
+        {isHelpModalOpen && (
+          <div className="help-overlay" role="presentation" onClick={() => setIsHelpModalOpen(false)}>
+            <section className="help-modal" role="dialog" aria-modal="true" aria-label="도움말" onClick={(event) => event.stopPropagation()}>
+              <div className="help-head">
+                <h3>도움말</h3>
+                <button type="button" className="icon-btn" onClick={() => setIsHelpModalOpen(false)} aria-label="닫기">
+                  ×
+                </button>
+              </div>
+              <ul className="help-list">
+                <li>상단 `+ 링크 추가`에서 URL을 저장하면 AI가 제목/요약/카테고리를 보강합니다.</li>
+                <li>기사 카드를 누르면 상세 편집창이 열리고 변경 사항은 자동 저장됩니다.</li>
+                <li>좌측 사이드바에서 상태, 카테고리, 컬렉션 기준으로 바로 필터링할 수 있습니다.</li>
+                <li>설정의 `데이터 관리`에서 파일 가져오기/내보내기를 실행할 수 있습니다.</li>
+                <li>설정의 `보안`에서 비밀번호 변경, 전체 기사 삭제, 회원 탈퇴를 처리할 수 있습니다.</li>
+              </ul>
             </section>
           </div>
         )}

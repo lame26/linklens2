@@ -294,6 +294,21 @@ function toSafeErrorMessage(error: unknown): string {
   return text.slice(0, 400);
 }
 
+async function deleteAuthUser(env: Env, userId: string): Promise<void> {
+  const response = await fetch(`${env.SUPABASE_URL}/auth/v1/admin/users/${encodeURIComponent(userId)}`, {
+    method: "DELETE",
+    headers: {
+      apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+      authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`
+    }
+  });
+
+  if (!response.ok) {
+    const text = (await response.text()).trim();
+    throw new Error(`delete_auth_user_failed (${response.status}) ${text || "unknown"}`);
+  }
+}
+
 function isSyntheticImportUrl(input: string): boolean {
   try {
     const parsed = new URL(input);
@@ -461,6 +476,26 @@ export default {
         },
         500
       );
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/v1/account/delete") {
+      const user = await getAuthenticatedUser(request, env);
+      if (!user) {
+        return jsonResponse({ error: "unauthorized" }, 401);
+      }
+
+      try {
+        await deleteAuthUser(env, user.id);
+        return jsonResponse({ ok: true });
+      } catch (error) {
+        return jsonResponse(
+          {
+            error: "delete_account_failed",
+            message: toSafeErrorMessage(error)
+          },
+          500
+        );
+      }
     }
 
     if (request.method === "POST" && url.pathname === "/api/v1/ai/preview-title") {
