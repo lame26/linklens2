@@ -173,31 +173,160 @@ button.ghost:hover {
 
 .auth-shell {
   min-height: 100vh;
+  padding: 28px 20px;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(1200px 520px at 10% -20%, color-mix(in srgb, var(--brand) 22%, transparent), transparent 68%),
+    radial-gradient(900px 460px at 92% 112%, color-mix(in srgb, var(--brand-soft) 35%, transparent), transparent 72%),
+    linear-gradient(160deg, color-mix(in srgb, var(--bg) 88%, #000), var(--bg));
+}
+
+.auth-layout {
+  width: min(1060px, 100%);
+  display: grid;
+  grid-template-columns: 1.15fr 0.85fr;
+  gap: 16px;
+  align-items: stretch;
+}
+
+.auth-showcase {
+  border: 1px solid color-mix(in srgb, var(--brand) 20%, var(--line));
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(170deg, color-mix(in srgb, var(--surface-1) 78%, #000), color-mix(in srgb, var(--surface-2) 84%, #000));
+  box-shadow: var(--shadow-2);
+  padding: 28px 26px;
+  display: grid;
+  gap: 12px;
+}
+
+.auth-showcase-mark {
+  width: 46px;
+  height: 46px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--brand) 34%, var(--line));
+  background: color-mix(in srgb, var(--surface-3) 78%, var(--brand-soft));
   display: grid;
   place-items: center;
 }
 
-.auth-card {
-  width: 100%;
-  background: var(--surface-1);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-lg);
-  padding: 30px 24px;
-  box-shadow: var(--shadow-2);
+.auth-showcase-mark img {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  display: block;
 }
 
-.auth-card h1 {
+.auth-showcase-kicker {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  font-weight: 700;
+  color: var(--text-3);
+}
+
+.auth-showcase h1 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(28px, 4vw, 44px);
+  letter-spacing: -0.03em;
+  line-height: 1.08;
+}
+
+.auth-showcase-desc {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.auth-showcase-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.auth-showcase-list li {
+  border: 1px solid color-mix(in srgb, var(--line) 90%, transparent);
+  background: color-mix(in srgb, var(--surface-2) 75%, #000);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  display: grid;
+  gap: 3px;
+}
+
+.auth-showcase-list strong {
+  font-size: 13px;
+  color: var(--text-1);
+}
+
+.auth-showcase-list span {
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.auth-card {
+  width: 100%;
+  background: linear-gradient(180deg, var(--surface-1), var(--surface-2));
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  padding: 24px 22px;
+  box-shadow: var(--shadow-2);
+  display: grid;
+  gap: 14px;
+}
+
+.auth-head {
+  display: grid;
+  gap: 6px;
+}
+
+.auth-mode-chip {
+  margin: 0;
+  width: fit-content;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  color: var(--brand);
+  border: 1px solid color-mix(in srgb, var(--brand) 38%, var(--line));
+  background: color-mix(in srgb, var(--brand-soft) 45%, var(--surface-3));
+  border-radius: var(--radius-xs);
+  padding: 3px 8px;
+}
+
+.auth-head h2 {
   margin: 0;
   font-family: var(--font-display);
   font-weight: 700;
-  letter-spacing: -0.02em;
-  font-size: 32px;
+  letter-spacing: -0.015em;
+  font-size: 30px;
 }
 
-.auth-card p {
-  margin: 8px 0 16px;
+.auth-head p {
+  margin: 0;
   color: var(--text-3);
   font-size: 13px;
+}
+
+.auth-form {
+  gap: 12px;
+}
+
+.auth-switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-top: 2px;
+}
+
+.auth-switch-row span {
+  color: var(--text-3);
+  font-size: 12px;
 }
 
 .stack {
@@ -1724,6 +1853,23 @@ textarea {
 }
 
 @media (max-width: 980px) {
+  .auth-shell {
+    padding: 14px 12px;
+  }
+
+  .auth-layout {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .auth-showcase {
+    padding: 18px 16px;
+  }
+
+  .auth-head h2 {
+    font-size: 26px;
+  }
+
   .app-layout {
     flex-direction: column;
   }

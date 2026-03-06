@@ -2558,47 +2558,79 @@ export default function App() {
 
   if (!session) {
     return (
-      <main className="app-shell auth-shell">
-        <section className="auth-card">
-          <h1>LinkPocket</h1>
-          <p>가볍게 저장하고, 나중에 정확하게 찾는 개인 링크 아카이브</p>
+      <main className="auth-shell">
+        <section className="auth-layout">
+          <aside className="auth-showcase">
+            <div className="auth-showcase-mark" aria-hidden>
+              <img src="/logo-mark.svg" alt="" />
+            </div>
+            <p className="auth-showcase-kicker">LINKPOCKET</p>
+            <h1>읽을거리 아카이브를 더 선명하게</h1>
+            <p className="auth-showcase-desc">링크 저장, AI 요약, 태그 정리, 상태 관리까지 하나의 흐름으로 연결합니다.</p>
+            <ul className="auth-showcase-list">
+              <li>
+                <strong>빠른 수집</strong>
+                <span>URL 붙여넣기와 파일 업로드로 즉시 정리</span>
+              </li>
+              <li>
+                <strong>AI 보강</strong>
+                <span>제목, 요약, 키워드, 카테고리를 자동 분석</span>
+              </li>
+              <li>
+                <strong>정밀 필터링</strong>
+                <span>상태, 카테고리, 컬렉션으로 바로 탐색</span>
+              </li>
+            </ul>
+          </aside>
 
-          <form onSubmit={handleAuthSubmit} className="stack">
-            <label>
-              이메일
-              <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
-            </label>
+          <section className="auth-card">
+            <div className="auth-head">
+              <p className="auth-mode-chip">{authMode === "login" ? "LOGIN" : "SIGN UP"}</p>
+              <h2>{authMode === "login" ? "로그인" : "회원가입"}</h2>
+              <p>{authMode === "login" ? "저장한 아카이브를 이어서 관리하세요." : "새 계정을 만들고 바로 시작하세요."}</p>
+            </div>
 
-            <label>
-              비밀번호
-              <input
-                type="password"
-                minLength={6}
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                required
-              />
-            </label>
+            <form onSubmit={handleAuthSubmit} className="stack auth-form">
+              <label>
+                이메일
+                <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required placeholder="you@example.com" />
+              </label>
 
-            <button type="submit" disabled={authLoading}>
-              {authLoading ? "처리 중..." : authMode === "login" ? "로그인" : "회원가입"}
-            </button>
-          </form>
+              <label>
+                비밀번호
+                <input
+                  type="password"
+                  minLength={6}
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  required
+                  placeholder="6자 이상"
+                />
+              </label>
 
-          <button
-            type="button"
-            className="ghost"
-            onClick={() => {
-              setAuthMode(authMode === "login" ? "signup" : "login");
-              setAuthNotice(null);
-              setErrorMessage(null);
-            }}
-          >
-            {authMode === "login" ? "회원가입으로 전환" : "로그인으로 전환"}
-          </button>
+              <button type="submit" disabled={authLoading}>
+                {authLoading ? "처리 중..." : authMode === "login" ? "로그인" : "회원가입"}
+              </button>
+            </form>
 
-          {authNotice && <p className="ok-text">{authNotice}</p>}
-          {errorMessage && <p className="error-text">{errorMessage}</p>}
+            <div className="auth-switch-row">
+              <span>{authMode === "login" ? "처음이신가요?" : "이미 계정이 있나요?"}</span>
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => {
+                  setAuthMode(authMode === "login" ? "signup" : "login");
+                  setAuthNotice(null);
+                  setErrorMessage(null);
+                }}
+              >
+                {authMode === "login" ? "회원가입으로 전환" : "로그인으로 전환"}
+              </button>
+            </div>
+
+            {authNotice && <p className="ok-text">{authNotice}</p>}
+            {errorMessage && <p className="error-text">{errorMessage}</p>}
+          </section>
         </section>
       </main>
     );
