@@ -24,10 +24,10 @@
   --warn: #ffc65a;
   --danger: #ff6f7f;
 
-  --radius-xs: 4px;
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 10px;
+  --radius-xs: 2px;
+  --radius-sm: 3px;
+  --radius-md: 5px;
+  --radius-lg: 7px;
 
   --shadow-1: 0 12px 36px rgba(2, 8, 16, 0.35);
   --shadow-2: 0 16px 44px rgba(2, 8, 16, 0.45);
@@ -139,12 +139,12 @@ button {
   color: #03111a;
   font-weight: 650;
   letter-spacing: 0.01em;
-  transition: transform 0.16s ease, box-shadow 0.18s ease, opacity 0.18s ease, border-color 0.18s ease;
+  transition: transform 0.14s ease, box-shadow 0.14s ease, opacity 0.16s ease, border-color 0.16s ease;
 }
 
 button:hover {
   transform: translateY(-1px);
-  box-shadow: 0 8px 22px rgba(91, 136, 109, 0.32);
+  box-shadow: 0 6px 14px rgba(91, 136, 109, 0.22);
 }
 
 button:disabled {
@@ -347,7 +347,7 @@ textarea {
   text-align: center;
   padding: 1px 6px;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: var(--radius-xs);
   color: var(--text-3);
   background: var(--surface-3);
   font-size: 11px;
@@ -486,7 +486,7 @@ textarea {
 .plan-bar-bg {
   height: 5px;
   background: var(--surface-3);
-  border-radius: 999px;
+  border-radius: var(--radius-xs);
   overflow: hidden;
 }
 
@@ -715,6 +715,11 @@ textarea {
   gap: 8px;
 }
 
+.settings-form-grid {
+  display: grid;
+  gap: 10px;
+}
+
 .danger-zone {
   border-color: color-mix(in srgb, var(--danger) 35%, var(--line));
 }
@@ -782,7 +787,7 @@ textarea {
   color: var(--text-2);
   border: 1px solid var(--line);
   background: var(--surface-3);
-  border-radius: 999px;
+  border-radius: var(--radius-xs);
   padding: 3px 9px;
 }
 
@@ -905,7 +910,7 @@ textarea {
   align-items: center;
   gap: 5px;
   padding: 3px 8px;
-  border-radius: 999px;
+  border-radius: var(--radius-xs);
   border: 1px solid transparent;
   font-size: 11px;
   font-weight: 600;
@@ -975,7 +980,7 @@ textarea {
 .link-meta span {
   padding: 2px 8px;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: var(--radius-xs);
   background: var(--surface-3);
   color: var(--text-3);
   font-size: 11px;
@@ -1177,7 +1182,7 @@ textarea {
 
 .tag-chip {
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: var(--radius-xs);
   background: var(--surface-3);
   color: var(--text-2);
   padding: 4px 9px;
@@ -1302,7 +1307,7 @@ textarea {
   font-size: 11px;
   color: var(--text-3);
   padding: 3px 8px;
-  border-radius: 999px;
+  border-radius: var(--radius-xs);
   border: 1px solid var(--line);
   background: var(--surface-3);
 }

@@ -691,6 +691,9 @@ export default function App() {
   const [exportingFormat, setExportingFormat] = useState<"" | "jsonl" | "csv">("");
   const [deletingAll, setDeletingAll] = useState(false);
   const [bulkAiRunning, setBulkAiRunning] = useState(false);
+  const [updatingPassword, setUpdatingPassword] = useState(false);
+  const [nextPassword, setNextPassword] = useState("");
+  const [nextPasswordConfirm, setNextPasswordConfirm] = useState("");
 
   const [collectionName, setCollectionName] = useState("");
   const [collectionColor, setCollectionColor] = useState<string>(COLLECTION_COLOR_PRESET[0]);
@@ -1227,6 +1230,44 @@ export default function App() {
       }
     } finally {
       setLogoutLoading(false);
+    }
+  }
+
+  async function handleUpdatePassword(): Promise<void> {
+    if (!session || updatingPassword) {
+      return;
+    }
+
+    const passwordValue = nextPassword.trim();
+    const confirmValue = nextPasswordConfirm.trim();
+
+    if (passwordValue.length < 6) {
+      setErrorMessage("새 비밀번호는 6자 이상이어야 합니다.");
+      return;
+    }
+    if (passwordValue !== confirmValue) {
+      setErrorMessage("비밀번호 확인이 일치하지 않습니다.");
+      return;
+    }
+
+    setUpdatingPassword(true);
+    setErrorMessage(null);
+
+    try {
+      const { error } = await supabase.auth.updateUser({ password: passwordValue });
+      if (error) {
+        throw error;
+      }
+
+      setNextPassword("");
+      setNextPasswordConfirm("");
+      setToast({ kind: "ok", message: "비밀번호가 변경되었습니다." });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setErrorMessage(`비밀번호 변경 실패: ${message}`);
+      setToast({ kind: "err", message: "비밀번호 변경 실패" });
+    } finally {
+      setUpdatingPassword(false);
     }
   }
 
@@ -2085,26 +2126,6 @@ export default function App() {
 
         <div className="sidebar-scroll">
           <div className="nav-group">
-            <p className="nav-group-label">작업 공간</p>
-            <button
-              type="button"
-              className={`nav-btn ${mainTab === "library" ? "active" : ""}`}
-              onClick={() => setMainTab("library")}
-            >
-              라이브러리
-            </button>
-            <button
-              type="button"
-              className={`nav-btn ${mainTab === "settings" ? "active" : ""}`}
-              onClick={() => setMainTab("settings")}
-            >
-              설정
-            </button>
-          </div>
-
-          {mainTab === "library" && (
-            <>
-          <div className="nav-group">
             <p className="nav-group-label">라이브러리</p>
             <button
               type="button"
@@ -2290,8 +2311,6 @@ export default function App() {
               </div>
             </form>
           </div>
-            </>
-          )}
         </div>
 
         <div className="sidebar-footer">
@@ -2351,9 +2370,6 @@ export default function App() {
                 <button type="button" className="ghost" onClick={() => void loadLinks()}>
                   새로고침
                 </button>
-                <button type="button" className="ghost" onClick={() => void runBulkAiForUncategorized()} disabled={bulkAiRunning || loadingLinks}>
-                  {bulkAiRunning ? "미분류 AI 처리중..." : "미분류 전체 AI"}
-                </button>
                 <button
                   type="button"
                   onClick={() => {
@@ -2380,8 +2396,33 @@ export default function App() {
               {showUserMenu && (
                 <div className="user-menu">
                   <p>{session.user.email}</p>
-                  <button type="button" className="ghost" onClick={handleLogout} disabled={logoutLoading}>
+                  <button
+                    type="button"
+                    className="ghost"
+                    onClick={() => {
+                      setMainTab("library");
+                      setShowUserMenu(false);
+                    }}
+                  >
+                    라이브러리
+                  </button>
+                  <button
+                    type="button"
+                    className="ghost"
+                    onClick={handleLogout}
+                    disabled={logoutLoading}
+                  >
                     {logoutLoading ? "로그아웃 중..." : "로그아웃"}
+                  </button>
+                  <button
+                    type="button"
+                    className="ghost"
+                    onClick={() => {
+                      setMainTab("settings");
+                      setShowUserMenu(false);
+                    }}
+                  >
+                    설정
                   </button>
                 </div>
               )}
@@ -2455,7 +2496,6 @@ export default function App() {
           <section className={`panel links-panel ${viewMode}`}>
             <div className="section-head">
               <h2>{showTrash ? "휴지통 링크" : "링크 목록"}</h2>
-              <span className="result-count">{visibleLinks.length}개</span>
             </div>
             {loadingLinks && <p className="muted">불러오는 중...</p>}
 
@@ -2662,6 +2702,14 @@ export default function App() {
                     >
                       {exportingFormat === "csv" ? "CSV 내보내는 중..." : "CSV 내보내기"}
                     </button>
+                    <button
+                      type="button"
+                      className="ghost"
+                      onClick={() => void runBulkAiForUncategorized()}
+                      disabled={bulkAiRunning || loadingLinks}
+                    >
+                      {bulkAiRunning ? "미분류 AI 처리중..." : "미분류 전체 AI 분석"}
+                    </button>
                   </div>
                   <p className="muted">내보내기는 삭제되지 않은 링크만 포함합니다.</p>
                 </article>
@@ -2713,6 +2761,38 @@ export default function App() {
                         크게
                       </button>
                     </div>
+                  </div>
+                </article>
+
+                <article className="settings-card">
+                  <h3>보안</h3>
+                  <p className="muted">현재 계정 비밀번호를 변경합니다.</p>
+                  <div className="settings-form-grid">
+                    <label>
+                      새 비밀번호
+                      <input
+                        type="password"
+                        minLength={6}
+                        value={nextPassword}
+                        onChange={(event) => setNextPassword(event.target.value)}
+                        placeholder="6자 이상"
+                      />
+                    </label>
+                    <label>
+                      새 비밀번호 확인
+                      <input
+                        type="password"
+                        minLength={6}
+                        value={nextPasswordConfirm}
+                        onChange={(event) => setNextPasswordConfirm(event.target.value)}
+                        placeholder="동일하게 입력"
+                      />
+                    </label>
+                  </div>
+                  <div className="settings-actions">
+                    <button type="button" className="ghost" onClick={() => void handleUpdatePassword()} disabled={updatingPassword}>
+                      {updatingPassword ? "비밀번호 변경 중..." : "비밀번호 변경"}
+                    </button>
                   </div>
                 </article>
 
