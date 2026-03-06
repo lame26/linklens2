@@ -4,26 +4,33 @@ import { supabase } from "./lib/supabase";
 import type { Collection, LinkItem, LinkStatus } from "./lib/types";
 
 const RAW_API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim() || "";
+const FALLBACK_PROD_API_BASE_URL = "https://linkpocket-api.lame26.workers.dev";
 
 function isLocalHost(hostname: string): boolean {
   return hostname === "localhost" || hostname === "127.0.0.1";
 }
 
 const API_BASE_URL = (() => {
-  if (!RAW_API_BASE_URL) {
-    return "";
-  }
-
   if (typeof window !== "undefined") {
     const appOnLocalhost = isLocalHost(window.location.hostname);
-    try {
-      const targetHost = new URL(RAW_API_BASE_URL).hostname;
-      if (!appOnLocalhost && isLocalHost(targetHost)) {
-        return "";
-      }
-    } catch {
-      return "";
+    if (!RAW_API_BASE_URL) {
+      return appOnLocalhost ? "" : FALLBACK_PROD_API_BASE_URL;
     }
+
+    try {
+      const parsed = new URL(RAW_API_BASE_URL);
+      const targetHost = parsed.hostname;
+      if (!appOnLocalhost && isLocalHost(targetHost)) {
+        return FALLBACK_PROD_API_BASE_URL;
+      }
+      return parsed.toString().replace(/\/$/, "");
+    } catch {
+      return appOnLocalhost ? "" : FALLBACK_PROD_API_BASE_URL;
+    }
+  }
+
+  if (!RAW_API_BASE_URL) {
+    return "";
   }
 
   return RAW_API_BASE_URL.replace(/\/$/, "");
@@ -53,7 +60,28 @@ async function withTimeout<T>(promise: PromiseLike<T>, timeoutMs: number, label:
 
 async function parseResponseError(response: Response): Promise<string> {
   const text = (await response.text()).trim();
-  return text || `HTTP ${response.status}`;
+  if (!text) {
+    return `HTTP ${response.status}`;
+  }
+
+  try {
+    const parsed = JSON.parse(text) as { error?: string; message?: string };
+    if (parsed?.message) {
+      return parsed.message;
+    }
+    if (parsed?.error) {
+      return parsed.error;
+    }
+  } catch {
+    // no-op
+  }
+
+  const lowered = text.toLowerCase();
+  if (lowered.includes("<!doctype") || lowered.includes("<html")) {
+    return `API 응답이 HTML입니다 (HTTP ${response.status}). VITE_API_BASE_URL/Worker 배포를 확인해 주세요.`;
+  }
+
+  return text;
 }
 
 type SortMode = "newest" | "oldest" | "rating";
@@ -1587,9 +1615,6 @@ export default function App() {
               }}
             >
               초기화
-            </button>
-            <button type="button" className="icon-btn" aria-label="도움말" title="도움말">
-              ?
             </button>
             <button type="button" className="ghost" onClick={() => void loadLinks()}>
               새로고침
