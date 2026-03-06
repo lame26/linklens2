@@ -144,18 +144,18 @@ const CATEGORY_FILTER_ALIASES: Record<string, string[]> = {
 };
 
 const COLLECTION_COLOR_PRESET = [
-  "#5f7df3",
-  "#00a6fb",
-  "#2ec4b6",
-  "#06d6a0",
-  "#84cc16",
-  "#f59e0b",
-  "#fb7185",
-  "#f43f5e",
-  "#8b5cf6",
-  "#14b8a6",
-  "#ef4444",
-  "#0ea5e9"
+  "#7f8c8d",
+  "#8d6e63",
+  "#6d7b8d",
+  "#8e7ca6",
+  "#5f8a7a",
+  "#a68a64",
+  "#b06b7d",
+  "#7b8ea3",
+  "#7a967f",
+  "#ab7f6b",
+  "#7f8fa6",
+  "#9d6f53"
 ] as const;
 
 interface LinkDraft {
@@ -310,6 +310,36 @@ function normalizeCategoryName(raw: unknown): string | null {
   return "기타";
 }
 
+function createEmptyCategoryCounts(): Record<string, number> {
+  return CATEGORY_BASE_MENU.reduce((acc, category) => {
+    acc[category] = 0;
+    return acc;
+  }, {} as Record<string, number>);
+}
+
+function draftTagKey(raw: string): string {
+  return normalizeTags(raw).sort().join("|");
+}
+
+function linkTagKey(tags: string[]): string {
+  return normalizeTags(tags.join(",")).sort().join("|");
+}
+
+function isDraftDirty(link: LinkItem, draft: LinkDraft): boolean {
+  const draftRating = parseRating(draft.rating);
+  const draftCollectionId = draft.collectionId || null;
+  const draftNote = draft.note.trim();
+  const linkNote = (link.note || "").trim();
+
+  return (
+    draftNote !== linkNote ||
+    draft.status !== link.status ||
+    draftRating !== link.rating ||
+    draftCollectionId !== link.collection_id ||
+    draftTagKey(draft.tags) !== linkTagKey(link.tags)
+  );
+}
+
 function pickAutoCollectionColor(collectionList: Collection[], seed = ""): string {
   const used = new Set(
     collectionList
@@ -394,6 +424,7 @@ export default function App() {
     aiDone: 0,
     trash: 0
   });
+  const [categoryCounts, setCategoryCounts] = useState<Record<string, number>>(() => createEmptyCategoryCounts());
   const [collections, setCollections] = useState<Collection[]>([]);
   const [drafts, setDrafts] = useState<Record<string, LinkDraft>>({});
 
@@ -426,7 +457,7 @@ export default function App() {
   const [bulkAiRunning, setBulkAiRunning] = useState(false);
 
   const [collectionName, setCollectionName] = useState("");
-  const [collectionColor, setCollectionColor] = useState("#5f7df3");
+  const [collectionColor, setCollectionColor] = useState<string>(COLLECTION_COLOR_PRESET[0]);
   const [editingCollectionId, setEditingCollectionId] = useState<string | null>(null);
   const [selectedLinkId, setSelectedLinkId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ kind: "info" | "ok" | "err"; message: string } | null>(null);
@@ -438,6 +469,8 @@ export default function App() {
   const newUrlInputRef = useRef<HTMLInputElement | null>(null);
   const importFileInputRef = useRef<HTMLInputElement | null>(null);
   const authInitDoneRef = useRef(false);
+  const draftsRef = useRef<Record<string, LinkDraft>>({});
+  const autoSaveTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   const selectedLink = useMemo(() => links.find((item) => item.id === selectedLinkId) || null, [links, selectedLinkId]);
   const selectedDraft = selectedLink ? drafts[selectedLink.id] || getLinkDraft(selectedLink) : null;
@@ -474,6 +507,17 @@ export default function App() {
     const timer = setTimeout(() => setToast(null), 2600);
     return () => clearTimeout(timer);
   }, [toast]);
+
+  useEffect(() => {
+    draftsRef.current = drafts;
+  }, [drafts]);
+
+  useEffect(() => {
+    return () => {
+      Object.values(autoSaveTimersRef.current).forEach((timer) => clearTimeout(timer));
+      autoSaveTimersRef.current = {};
+    };
+  }, []);
 
   useEffect(() => {
     if (!selectedLinkId) {
@@ -563,6 +607,7 @@ export default function App() {
   const loadLinks = useCallback(async () => {
     if (!session) {
       setLinks([]);
+      setCategoryCounts(createEmptyCategoryCounts());
       setLibraryStats({
         total: 0,
         unread: 0,
@@ -625,16 +670,7 @@ export default function App() {
       return count ?? 0;
     };
 
-    const [
-      listResult,
-      total,
-      unread,
-      reading,
-      done,
-      favorite,
-      aiDone,
-      trash
-    ] = await Promise.all([
+    const fixedQueries = [
       query.limit(200),
       countOnly(supabase.from("links").select("id", { count: "exact", head: true }).is("deleted_at", null)),
       countOnly(supabase.from("links").select("id", { count: "exact", head: true }).is("deleted_at", null).eq("status", "unread")),
@@ -643,7 +679,15 @@ export default function App() {
       countOnly(supabase.from("links").select("id", { count: "exact", head: true }).is("deleted_at", null).eq("is_favorite", true)),
       countOnly(supabase.from("links").select("id", { count: "exact", head: true }).is("deleted_at", null).eq("ai_state", "success")),
       countOnly(supabase.from("links").select("id", { count: "exact", head: true }).not("deleted_at", "is", null))
-    ]);
+    ] as const;
+
+    const categoryCountQueries = CATEGORY_BASE_MENU.map((category) => {
+      const aliases = CATEGORY_FILTER_ALIASES[category] || [category];
+      return countOnly(supabase.from("links").select("id", { count: "exact", head: true }).is("deleted_at", null).in("category", aliases));
+    });
+
+    const [fixedResults, categoryCountValues] = await Promise.all([Promise.all(fixedQueries), Promise.all(categoryCountQueries)]);
+    const [listResult, total, unread, reading, done, favorite, aiDone, trash] = fixedResults;
 
     setLoadingLinks(false);
 
@@ -661,6 +705,12 @@ export default function App() {
       aiDone,
       trash
     });
+
+    const nextCategoryCounts = createEmptyCategoryCounts();
+    CATEGORY_BASE_MENU.forEach((category, index) => {
+      nextCategoryCounts[category] = categoryCountValues[index] ?? 0;
+    });
+    setCategoryCounts(nextCategoryCounts);
 
     const mapped = (listResult.data || []).map(mapLinkRow);
     setLinks(mapped);
@@ -1087,7 +1137,7 @@ export default function App() {
   function startCollectionEdit(collection: Collection): void {
     setEditingCollectionId(collection.id);
     setCollectionName(collection.name);
-    setCollectionColor(collection.color || "#5f7df3");
+    setCollectionColor(collection.color || COLLECTION_COLOR_PRESET[0]);
   }
 
   async function handleDeleteCollection(collectionId: string): Promise<void> {
@@ -1109,7 +1159,7 @@ export default function App() {
     if (editingCollectionId === collectionId) {
       setEditingCollectionId(null);
       setCollectionName("");
-      setCollectionColor("#5f7df3");
+      setCollectionColor(COLLECTION_COLOR_PRESET[0]);
     }
     await loadCollections();
     await loadLinks();
@@ -1202,15 +1252,24 @@ export default function App() {
     }
   }
 
-  async function updateLink(link: LinkItem) {
+  async function saveDraftById(linkId: string) {
     if (!session) {
       return;
     }
 
-    const draft = drafts[link.id] || getLinkDraft(link);
+    const link = links.find((item) => item.id === linkId);
+    if (!link) {
+      return;
+    }
+
+    const draft = draftsRef.current[linkId] || getLinkDraft(link);
+    if (!isDraftDirty(link, draft)) {
+      return;
+    }
+
     const ratingValue = parseRating(draft.rating);
 
-    setSavingLinkId(link.id);
+    setSavingLinkId(linkId);
     setErrorMessage(null);
 
     try {
@@ -1221,19 +1280,47 @@ export default function App() {
         collection_id: draft.collectionId || null
       };
 
-      const { error } = await supabase.from("links").update(payload).eq("id", link.id);
+      const { error } = await supabase.from("links").update(payload).eq("id", linkId);
       if (error) {
         throw error;
       }
 
-      await syncLinkTags(link.id, draft.tags);
-      await loadLinks();
+      await syncLinkTags(linkId, draft.tags);
+
+      const normalizedTags = normalizeTags(draft.tags);
+      setLinks((prev) =>
+        prev.map((item) =>
+          item.id === linkId
+            ? {
+                ...item,
+                note: payload.note,
+                status: draft.status,
+                rating: ratingValue,
+                collection_id: payload.collection_id,
+                collection: collections.find((collection) => collection.id === payload.collection_id) || null,
+                tags: normalizedTags
+              }
+            : item
+        )
+      );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setErrorMessage(`링크 수정 실패: ${message}`);
     } finally {
       setSavingLinkId(null);
     }
+  }
+
+  function scheduleDraftAutoSave(linkId: string): void {
+    const prevTimer = autoSaveTimersRef.current[linkId];
+    if (prevTimer) {
+      clearTimeout(prevTimer);
+    }
+
+    autoSaveTimersRef.current[linkId] = setTimeout(() => {
+      delete autoSaveTimersRef.current[linkId];
+      void saveDraftById(linkId);
+    }, 500);
   }
 
   async function setLinkDeleted(linkId: string, deleted: boolean) {
@@ -1415,14 +1502,17 @@ export default function App() {
   function updateDraft(link: LinkItem, patch: Partial<LinkDraft>) {
     setDrafts((prev) => {
       const current = prev[link.id] || getLinkDraft(link);
-      return {
+      const next = {
         ...prev,
         [link.id]: {
           ...current,
           ...patch
         }
       };
+      draftsRef.current = next;
+      return next;
     });
+    scheduleDraftAutoSave(link.id);
   }
 
   const modalTags = useMemo(() => normalizeTags(newTags), [newTags]);
@@ -1462,9 +1552,9 @@ export default function App() {
   const categoryStats = useMemo(() => {
     return categoryMenu.map((category) => ({
       category,
-      count: links.filter((item) => item.category === category).length
+      count: categoryCounts[category] || 0
     }));
-  }, [categoryMenu, links]);
+  }, [categoryMenu, categoryCounts]);
 
   const readingCount = libraryStats.reading;
   const doneCount = libraryStats.done;
@@ -1695,7 +1785,7 @@ export default function App() {
                       setCollectionFilter(collection.id);
                     }}
                   >
-                    <span className="collection-dot" style={{ backgroundColor: collection.color || "#8b7bff" }} />
+                    <span className="collection-dot" style={{ backgroundColor: collection.color || COLLECTION_COLOR_PRESET[0] }} />
                     {collection.name}
                     <span className="nav-count">{count}</span>
                   </button>
@@ -1744,7 +1834,7 @@ export default function App() {
                     onClick={() => {
                       setEditingCollectionId(null);
                       setCollectionName("");
-                      setCollectionColor("#5f7df3");
+                      setCollectionColor(COLLECTION_COLOR_PRESET[0]);
                     }}
                   >
                     취소
@@ -2247,7 +2337,7 @@ export default function App() {
             }
             if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
               event.preventDefault();
-              void updateLink(selectedLink);
+              void saveDraftById(selectedLink.id);
             }
           }}
         >
@@ -2344,7 +2434,7 @@ export default function App() {
                         className={`collection-choice ${selectedDraft.collectionId === collection.id ? "active" : ""}`}
                         onClick={() => updateDraft(selectedLink, { collectionId: collection.id })}
                       >
-                        <span className="collection-dot" style={{ backgroundColor: collection.color || "#5f7df3" }} />
+                        <span className="collection-dot" style={{ backgroundColor: collection.color || COLLECTION_COLOR_PRESET[0] }} />
                         {collection.name}
                       </button>
                     ))}
@@ -2370,9 +2460,7 @@ export default function App() {
                 >
                   AI 재실행
                 </button>
-                <button type="button" onClick={() => void updateLink(selectedLink)} disabled={savingLinkId === selectedLink.id}>
-                  변경 저장
-                </button>
+                <span className="detail-autosave-state">{savingLinkId === selectedLink.id ? "저장 중..." : "자동 저장됨"}</span>
               </div>
             </>
           )}

@@ -3,21 +3,21 @@
   --font-ui: "Sora", "SUIT Variable", "Pretendard", "Noto Sans KR", sans-serif;
   --font-display: "Space Grotesk", "Sora", "SUIT Variable", sans-serif;
 
-  --bg: #090d12;
-  --bg-soft: #101722;
-  --surface-1: #131d2a;
-  --surface-2: #172334;
-  --surface-3: #1e2c41;
-  --line: #253750;
-  --line-strong: #345073;
+  --bg: #0c0e10;
+  --bg-soft: #13171a;
+  --surface-1: #171b1f;
+  --surface-2: #1c2227;
+  --surface-3: #232b31;
+  --line: #2d373f;
+  --line-strong: #3a4752;
 
-  --text-1: #f4f8ff;
-  --text-2: #a8bdd8;
-  --text-3: #6f85a1;
+  --text-1: #edf2f6;
+  --text-2: #b3bdc6;
+  --text-3: #7f8c97;
 
-  --brand: #2ec5ff;
-  --brand-strong: #12a7e4;
-  --brand-soft: rgba(46, 197, 255, 0.17);
+  --brand: #8fbf9e;
+  --brand-strong: #76a988;
+  --brand-soft: rgba(143, 191, 158, 0.16);
 
   --good: #3cd39a;
   --warn: #ffc65a;
@@ -34,21 +34,21 @@
 
 :root[data-theme="light"] {
   color-scheme: light;
-  --bg: #eef3fa;
-  --bg-soft: #f4f7fc;
+  --bg: #ecefed;
+  --bg-soft: #f4f6f4;
   --surface-1: #ffffff;
-  --surface-2: #f7f9fd;
-  --surface-3: #eef3fb;
-  --line: #d5e1f0;
-  --line-strong: #b7c9df;
+  --surface-2: #f6f8f6;
+  --surface-3: #edf1ee;
+  --line: #d3dbd5;
+  --line-strong: #bcc9c0;
 
-  --text-1: #152235;
-  --text-2: #46617e;
-  --text-3: #7f99b5;
+  --text-1: #1c262f;
+  --text-2: #4f5f6c;
+  --text-3: #7d8b96;
 
-  --brand: #058bc5;
-  --brand-strong: #056f9f;
-  --brand-soft: rgba(5, 139, 197, 0.13);
+  --brand: #4f7f62;
+  --brand-strong: #3f6a52;
+  --brand-soft: rgba(79, 127, 98, 0.14);
 
   --good: #0a9f6a;
   --warn: #a77400;
@@ -103,7 +103,7 @@ body {
   color: var(--text-1);
   line-height: 1.5;
   background:
-    linear-gradient(180deg, rgba(46, 197, 255, 0.08), transparent 220px),
+    linear-gradient(180deg, rgba(143, 191, 158, 0.08), transparent 220px),
     linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
     linear-gradient(0deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
     var(--bg);
@@ -142,7 +142,7 @@ button {
 
 button:hover {
   transform: translateY(-1px);
-  box-shadow: 0 8px 22px rgba(20, 140, 198, 0.34);
+  box-shadow: 0 8px 22px rgba(91, 136, 109, 0.32);
 }
 
 button:disabled {
@@ -1386,11 +1386,18 @@ textarea {
   padding: 12px 14px;
   border-top: 1px solid var(--line);
   display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 8px;
 }
 
 .detail-actions button {
-  flex: 1;
+  min-width: 96px;
+}
+
+.detail-autosave-state {
+  font-size: 12px;
+  color: var(--text-3);
 }
 
 .global-error {
