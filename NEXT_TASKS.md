@@ -1,6 +1,8 @@
 # NEXT TASKS
 
 ## P0 (바로 진행)
+- [ ] 수동 업로드된 구글 URL 치환 SQL 실행 (`supabase/sql/20260306_replace_google_links_with_article_urls.sql`)
+- [ ] 기존 수동 업로드 링크의 `published_at` 백필 SQL 실행 및 결과 검증
 - [x] 저장 요청 무한 로딩 방지 (요청 타임아웃/실패 토스트/버튼 복구 보장)
 - [x] 인증 레이스 조건 정리 (`auth state change`/초기 세션 로드 단일화)
 - [x] 카드 액션 버튼 아이콘화 + 툴팁 적용 (`열기/즐겨찾기/AI/삭제`)
