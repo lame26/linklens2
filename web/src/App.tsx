@@ -86,6 +86,16 @@ interface LinkDraft {
   collectionId: string;
 }
 
+interface LibraryStats {
+  total: number;
+  unread: number;
+  reading: number;
+  done: number;
+  favorite: number;
+  aiDone: number;
+  trash: number;
+}
+
 interface ImportArticleRow {
   url?: string;
   title?: string;
@@ -214,6 +224,7 @@ function mapLinkRow(row: any): LinkItem {
     collection_id: row.collection_id,
     ai_state: row.ai_state,
     ai_error: row.ai_error,
+    published_at: row.published_at ?? null,
     created_at: row.created_at,
     deleted_at: row.deleted_at,
     collection: row.collection
@@ -248,6 +259,15 @@ export default function App() {
   const [authMode, setAuthMode] = useState<"login" | "signup">("login");
 
   const [links, setLinks] = useState<LinkItem[]>([]);
+  const [libraryStats, setLibraryStats] = useState<LibraryStats>({
+    total: 0,
+    unread: 0,
+    reading: 0,
+    done: 0,
+    favorite: 0,
+    aiDone: 0,
+    trash: 0
+  });
   const [collections, setCollections] = useState<Collection[]>([]);
   const [drafts, setDrafts] = useState<Record<string, LinkDraft>>({});
 
@@ -416,6 +436,15 @@ export default function App() {
   const loadLinks = useCallback(async () => {
     if (!session) {
       setLinks([]);
+      setLibraryStats({
+        total: 0,
+        unread: 0,
+        reading: 0,
+        done: 0,
+        favorite: 0,
+        aiDone: 0,
+        trash: 0
+      });
       return;
     }
 
@@ -425,7 +454,7 @@ export default function App() {
     let query = supabase
       .from("links")
       .select(
-        "id, url, title, note, status, rating, is_favorite, category, summary, keywords, collection_id, ai_state, ai_error, created_at, deleted_at, collection:collections(id, name, color), link_tags(tag:tags(name))"
+        "id, url, title, note, status, rating, is_favorite, category, summary, keywords, collection_id, ai_state, ai_error, published_at, created_at, deleted_at, collection:collections(id, name, color), link_tags(tag:tags(name))"
       );
 
     query = showTrash ? query.not("deleted_at", "is", null) : query.is("deleted_at", null);
@@ -460,16 +489,52 @@ export default function App() {
       query = query.order("created_at", { ascending: false });
     }
 
-    const { data, error } = await query.limit(200);
+    const countOnly = async (countQuery: any) => {
+      const { count, error } = await countQuery;
+      if (error) {
+        throw error;
+      }
+      return count ?? 0;
+    };
+
+    const [
+      listResult,
+      total,
+      unread,
+      reading,
+      done,
+      favorite,
+      aiDone,
+      trash
+    ] = await Promise.all([
+      query.limit(200),
+      countOnly(supabase.from("links").select("id", { count: "exact", head: true }).is("deleted_at", null)),
+      countOnly(supabase.from("links").select("id", { count: "exact", head: true }).is("deleted_at", null).eq("status", "unread")),
+      countOnly(supabase.from("links").select("id", { count: "exact", head: true }).is("deleted_at", null).eq("status", "reading")),
+      countOnly(supabase.from("links").select("id", { count: "exact", head: true }).is("deleted_at", null).eq("status", "done")),
+      countOnly(supabase.from("links").select("id", { count: "exact", head: true }).is("deleted_at", null).eq("is_favorite", true)),
+      countOnly(supabase.from("links").select("id", { count: "exact", head: true }).is("deleted_at", null).eq("ai_state", "success")),
+      countOnly(supabase.from("links").select("id", { count: "exact", head: true }).not("deleted_at", "is", null))
+    ]);
 
     setLoadingLinks(false);
 
-    if (error) {
-      setErrorMessage(`링크 조회 실패: ${error.message}`);
+    if (listResult.error) {
+      setErrorMessage(`링크 조회 실패: ${listResult.error.message}`);
       return;
     }
 
-    const mapped = (data || []).map(mapLinkRow);
+    setLibraryStats({
+      total,
+      unread,
+      reading,
+      done,
+      favorite,
+      aiDone,
+      trash
+    });
+
+    const mapped = (listResult.data || []).map(mapLinkRow);
     setLinks(mapped);
   }, [session, showTrash, collectionFilter, categoryFilter, favoriteOnly, search, sortMode]);
 
@@ -939,7 +1004,7 @@ export default function App() {
           .from("links")
           .insert([payload])
           .select(
-            "id, url, title, note, status, rating, is_favorite, category, summary, keywords, collection_id, ai_state, ai_error, created_at, deleted_at"
+            "id, url, title, note, status, rating, is_favorite, category, summary, keywords, collection_id, ai_state, ai_error, published_at, created_at, deleted_at"
           )
           .single(),
         REQUEST_TIMEOUT_MS,
@@ -964,6 +1029,7 @@ export default function App() {
         collection_id: data.collection_id,
         ai_state: data.ai_state,
         ai_error: data.ai_error,
+        published_at: data.published_at ?? null,
         created_at: data.created_at,
         deleted_at: data.deleted_at,
         collection: collections.find((item) => item.id === data.collection_id) || null,
@@ -1156,12 +1222,12 @@ export default function App() {
 
   const headerStats = useMemo(
     () => ({
-      total: links.length,
-      unread: links.filter((item) => item.status === "unread").length,
-      aiDone: links.filter((item) => item.ai_state === "success").length,
-      favorite: links.filter((item) => item.is_favorite).length
+      total: libraryStats.total,
+      unread: libraryStats.unread,
+      aiDone: libraryStats.aiDone,
+      favorite: libraryStats.favorite
     }),
-    [links]
+    [libraryStats]
   );
 
   const visibleLinks = useMemo(
@@ -1183,8 +1249,8 @@ export default function App() {
     }));
   }, [categoryMenu, links]);
 
-  const readingCount = useMemo(() => links.filter((item) => item.status === "reading").length, [links]);
-  const doneCount = useMemo(() => links.filter((item) => item.status === "done").length, [links]);
+  const readingCount = libraryStats.reading;
+  const doneCount = libraryStats.done;
   const userLabel = useMemo(() => {
     const emailValue = session?.user?.email || "User";
     return emailValue.split("@")[0] || emailValue;
@@ -1364,7 +1430,7 @@ export default function App() {
                 setShowTrash((prev) => !prev);
               }}
             >
-              휴지통 <span className="nav-count">{showTrash ? links.length : 0}</span>
+              휴지통 <span className="nav-count">{libraryStats.trash}</span>
             </button>
           </div>
 
