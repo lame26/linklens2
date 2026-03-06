@@ -250,6 +250,12 @@ function getDisplayDateValue(link: Pick<LinkItem, "published_at" | "created_at">
   return link.published_at || link.created_at;
 }
 
+function getDateSortValue(link: Pick<LinkItem, "published_at" | "created_at">): number {
+  const raw = getDisplayDateValue(link);
+  const value = Date.parse(raw);
+  return Number.isNaN(value) ? 0 : value;
+}
+
 function renderRating(rating: number | null): string {
   if (!rating || rating < 1) {
     return "미평가";
@@ -733,6 +739,7 @@ export default function App() {
   const [newTitle, setNewTitle] = useState("");
   const [newCategory, setNewCategory] = useState("");
   const [newNote, setNewNote] = useState("");
+  const [newPublishedAt, setNewPublishedAt] = useState<string | null>(null);
   const [newStatus, setNewStatus] = useState<LinkStatus>("unread");
   const [newCollectionId, setNewCollectionId] = useState("");
   const [newTags, setNewTags] = useState("");
@@ -1164,6 +1171,11 @@ export default function App() {
       }
 
       const mapped = (listResult.data || []).map(mapLinkRow);
+      if (sortMode === "newest") {
+        mapped.sort((a, b) => getDateSortValue(b) - getDateSortValue(a));
+      } else if (sortMode === "oldest") {
+        mapped.sort((a, b) => getDateSortValue(a) - getDateSortValue(b));
+      }
       setLinks(mapped);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -1273,6 +1285,7 @@ export default function App() {
 
     const targetUrl = newUrl.trim();
     if (!parseUrlValid(targetUrl)) {
+      setNewPublishedAt(null);
       return;
     }
 
@@ -1298,15 +1311,17 @@ export default function App() {
           throw new Error(await parseResponseError(response));
         }
 
-        const payload = (await response.json()) as { title?: string };
+        const payload = (await response.json()) as { title?: string; publishedAt?: string };
         if (payload?.title && !manualTitleEdited) {
           setNewTitle(payload.title);
         }
+        setNewPublishedAt(payload?.publishedAt || null);
       } catch (error) {
         if ((error as Error).name !== "AbortError") {
           const message = error instanceof Error ? error.message : String(error);
           setErrorMessage(`제목 자동완성 실패: ${message}`);
         }
+        setNewPublishedAt(null);
       } finally {
         setPreviewLoading(false);
       }
@@ -1972,6 +1987,7 @@ export default function App() {
         url: trimmedUrl,
         title: newTitle.trim() || null,
         note: newNote.trim() || null,
+        published_at: newPublishedAt,
         status: newStatus,
         collection_id: newCollectionId || null,
         category: normalizeCategoryName(newCategory) || null
@@ -2022,6 +2038,7 @@ export default function App() {
       setNewTitle("");
       setNewCategory("");
       setNewNote("");
+      setNewPublishedAt(null);
       setNewStatus("unread");
       setNewCollectionId("");
       setNewTags("");
@@ -2765,16 +2782,17 @@ export default function App() {
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
                 />
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsAddModalOpen(true);
-                    setManualTitleEdited(false);
-                    setTimeout(() => newUrlInputRef.current?.focus(), 0);
-                  }}
-                >
-                  + 링크 추가
-                </button>
+	                <button
+	                  type="button"
+	                  onClick={() => {
+	                    setIsAddModalOpen(true);
+	                    setManualTitleEdited(false);
+	                    setNewPublishedAt(null);
+	                    setTimeout(() => newUrlInputRef.current?.focus(), 0);
+	                  }}
+	                >
+	                  + 링크 추가
+	                </button>
               </>
             )}
             <div className="user-menu-wrap" onClick={(event) => event.stopPropagation()}>

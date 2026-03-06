@@ -160,6 +160,79 @@ function decodeHtmlEntities(text: string): string {
     .replace(/&quot;/g, '"');
 }
 
+function extractAttr(tagText: string, attrName: string): string | null {
+  const pattern = new RegExp(`${attrName}\\s*=\\s*["']([^"']+)["']`, "i");
+  const match = tagText.match(pattern);
+  return match?.[1]?.trim() || null;
+}
+
+function normalizeIsoDate(raw: string | null): string | null {
+  if (!raw) {
+    return null;
+  }
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+  const year = parsed.getUTCFullYear();
+  if (year < 1990 || year > new Date().getUTCFullYear() + 1) {
+    return null;
+  }
+  return parsed.toISOString();
+}
+
+function extractPublishedAt(html: string): string | null {
+  const metaMatches = html.match(/<meta\s+[^>]*>/gi) || [];
+  const keySet = new Set([
+    "article:published_time",
+    "og:published_time",
+    "publish_date",
+    "published_date",
+    "pubdate",
+    "date",
+    "dc.date",
+    "dc.date.issued",
+    "parsely-pub-date",
+    "citation_publication_date",
+    "citation_date"
+  ]);
+
+  for (const metaTag of metaMatches) {
+    const keyRaw = extractAttr(metaTag, "property") || extractAttr(metaTag, "name") || extractAttr(metaTag, "itemprop");
+    const key = (keyRaw || "").toLowerCase();
+    if (!keySet.has(key)) {
+      continue;
+    }
+    const content = extractAttr(metaTag, "content") || extractAttr(metaTag, "value");
+    const normalized = normalizeIsoDate(content);
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  const timeMatch = html.match(/<time[^>]*datetime=["']([^"']+)["'][^>]*>/i);
+  if (timeMatch?.[1]) {
+    const normalized = normalizeIsoDate(timeMatch[1]);
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  const jsonLdMatch = html.match(/"datePublished"\s*:\s*"([^"]+)"/i);
+  if (jsonLdMatch?.[1]) {
+    const normalized = normalizeIsoDate(jsonLdMatch[1]);
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  return null;
+}
+
 function extractReadableText(html: string): string | null {
   const articleMatch = html.match(/<article[\s\S]*?<\/article>/i);
   const mainMatch = html.match(/<main[\s\S]*?<\/main>/i);
@@ -185,34 +258,7 @@ function extractReadableText(html: string): string | null {
   return cleaned.slice(0, 6000);
 }
 
-async function fetchPageTitle(url: string): Promise<string | null> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 8000);
-
-  try {
-    const res = await fetch(url, {
-      method: "GET",
-      redirect: "follow",
-      signal: controller.signal,
-      headers: {
-        "user-agent": "LinkPocketBot/1.0 (+https://linkpocket.app)"
-      }
-    });
-
-    if (!res.ok) {
-      return null;
-    }
-
-    const html = await res.text();
-    return extractHtmlTitle(html);
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-async function fetchPageSnapshot(url: string): Promise<{ title: string | null; text: string | null }> {
+async function fetchPageSnapshot(url: string): Promise<{ title: string | null; text: string | null; publishedAt: string | null }> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 9000);
   try {
@@ -225,15 +271,16 @@ async function fetchPageSnapshot(url: string): Promise<{ title: string | null; t
       }
     });
     if (!res.ok) {
-      return { title: null, text: null };
+      return { title: null, text: null, publishedAt: null };
     }
     const html = await res.text();
     return {
       title: extractHtmlTitle(html),
-      text: extractReadableText(html)
+      text: extractReadableText(html),
+      publishedAt: extractPublishedAt(html)
     };
   } catch {
-    return { title: null, text: null };
+    return { title: null, text: null, publishedAt: null };
   } finally {
     clearTimeout(timer);
   }
@@ -741,7 +788,8 @@ export default {
       }
 
       const fallbackTitle = new URL(targetUrl).hostname;
-      const rawTitle = await fetchPageTitle(targetUrl);
+      const snapshot = await fetchPageSnapshot(targetUrl);
+      const rawTitle = snapshot.title;
 
       try {
         const result = await callOpenAiJson<{ title?: string }>(
@@ -756,9 +804,9 @@ export default {
         );
 
         const title = (result.title || rawTitle || fallbackTitle).trim();
-        return jsonResponse({ title });
+        return jsonResponse({ title, publishedAt: snapshot.publishedAt });
       } catch {
-        return jsonResponse({ title: rawTitle || fallbackTitle });
+        return jsonResponse({ title: rawTitle || fallbackTitle, publishedAt: snapshot.publishedAt });
       }
     }
 
@@ -778,8 +826,8 @@ export default {
       let taskId: string | null = null;
 
       try {
-        const selectPath = `links?id=eq.${linkId}&user_id=eq.${user.id}&select=id,url,title,note,keywords`;
-        const links = await supabaseRest<Array<{ id: string; url: string; title: string | null; note: string | null; keywords: string[] | null }>>(env, selectPath);
+        const selectPath = `links?id=eq.${linkId}&user_id=eq.${user.id}&select=id,url,title,note,keywords,published_at`;
+        const links = await supabaseRest<Array<{ id: string; url: string; title: string | null; note: string | null; keywords: string[] | null; published_at: string | null }>>(env, selectPath);
         const link = links[0];
 
         if (!link) {
@@ -801,7 +849,7 @@ export default {
         });
 
         const syntheticImport = isSyntheticImportUrl(link.url);
-        const snapshot = syntheticImport ? { title: null, text: null } : await fetchPageSnapshot(link.url);
+        const snapshot = syntheticImport ? { title: null, text: null, publishedAt: null } : await fetchPageSnapshot(link.url);
         const rawTitle = snapshot.title;
         const articleText = snapshot.text;
         const articleExcerpt = (articleText || "").slice(0, 4000);
@@ -873,6 +921,7 @@ export default {
             summary: (analysis.summary || "").trim() || null,
             keywords,
             category,
+            ...(snapshot.publishedAt && !link.published_at ? { published_at: snapshot.publishedAt } : {}),
             ai_state: "success",
             ai_error: null,
             last_analyzed_at: new Date().toISOString()
