@@ -17,6 +17,7 @@ import {
   Trash2,
   X
 } from "lucide-react";
+import { useImportExportActions } from "./hooks/useImportExportActions";
 import { supabase } from "./lib/supabase";
 import type { Collection, LinkItem, LinkStatus } from "./lib/types";
 
@@ -765,8 +766,6 @@ export default function App() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [manualTitleEdited, setManualTitleEdited] = useState(false);
-  const [importingFile, setImportingFile] = useState(false);
-  const [exportingFormat, setExportingFormat] = useState<"" | "jsonl" | "csv">("");
   const [deletingAll, setDeletingAll] = useState(false);
   const [bulkAiRunning, setBulkAiRunning] = useState(false);
   const [updatingPassword, setUpdatingPassword] = useState(false);
@@ -982,20 +981,6 @@ export default function App() {
       setSelectedLinkIds([]);
     }
   }, [multiSelectMode]);
-
-  useEffect(() => {
-    if (!importingFile) {
-      return;
-    }
-
-    function handleBeforeUnload(event: BeforeUnloadEvent): void {
-      event.preventDefault();
-      event.returnValue = "파일 업로드가 진행 중입니다.";
-    }
-
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [importingFile]);
 
   function resetAiPreferenceState(): void {
     setSummaryLengthMode("medium");
@@ -1436,6 +1421,46 @@ export default function App() {
       }
     }
   }
+
+  const importExportActions = useImportExportActions({
+    session,
+    autoAnalyzeOnImport,
+    linksQuery: { loadLinks },
+    syncLinkTags,
+    runAiEnrichmentInBackground,
+    normalizeTags,
+    parseUrlValid,
+    buildImportFallbackUrl,
+    inferImportYear,
+    resolveImportPublishedAt,
+    parseImportKeywords,
+    parseCsvRows,
+    mapLinkRow,
+    csvEscape,
+    downloadTextFile,
+    clearError: () => setErrorMessage(null),
+    onError: setErrorMessage,
+    onToast: setToast,
+    onImportFileInputReset: () => {
+      if (importFileInputRef.current) {
+        importFileInputRef.current.value = "";
+      }
+    }
+  });
+
+  useEffect(() => {
+    if (!importExportActions.importingFile) {
+      return;
+    }
+
+    function handleBeforeUnload(event: BeforeUnloadEvent): void {
+      event.preventDefault();
+      event.returnValue = "파일 업로드가 진행 중입니다.";
+    }
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [importExportActions.importingFile]);
 
   async function handleAuthSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -2972,7 +2997,7 @@ export default function App() {
           onChange={(event) => {
             const file = event.target.files?.[0];
             if (file) {
-              void handleImportArticlesFile(file);
+              void importExportActions.handleImportArticlesFile(file);
             }
           }}
         />
@@ -3435,24 +3460,24 @@ export default function App() {
                     </div>
                   </div>
                   <div className="settings-actions">
-                    <button type="button" className="ghost" onClick={() => importFileInputRef.current?.click()} disabled={importingFile}>
-                      {importingFile ? "가져오는 중..." : "파일 가져오기"}
+                    <button type="button" className="ghost" onClick={() => importFileInputRef.current?.click()} disabled={importExportActions.importingFile}>
+                      {importExportActions.importingFile ? "가져오는 중..." : "파일 가져오기"}
                     </button>
                     <button
                       type="button"
                       className="ghost"
-                      onClick={() => void handleExportLinks("jsonl")}
-                      disabled={Boolean(exportingFormat)}
+                      onClick={() => void importExportActions.handleExportLinks("jsonl")}
+                      disabled={Boolean(importExportActions.exportingFormat)}
                     >
-                      {exportingFormat === "jsonl" ? "JSONL 내보내는 중..." : "JSONL 내보내기"}
+                      {importExportActions.exportingFormat === "jsonl" ? "JSONL 내보내는 중..." : "JSONL 내보내기"}
                     </button>
                     <button
                       type="button"
                       className="ghost"
-                      onClick={() => void handleExportLinks("csv")}
-                      disabled={Boolean(exportingFormat)}
+                      onClick={() => void importExportActions.handleExportLinks("csv")}
+                      disabled={Boolean(importExportActions.exportingFormat)}
                     >
-                      {exportingFormat === "csv" ? "CSV 내보내는 중..." : "CSV 내보내기"}
+                      {importExportActions.exportingFormat === "csv" ? "CSV 내보내는 중..." : "CSV 내보내기"}
                     </button>
                     <button
                       type="button"
@@ -3974,7 +3999,7 @@ export default function App() {
 
 	        {toast && <div className={`toast toast-${toast.kind}`}>{toast.message}</div>}
 	        {errorMessage && <p className="error-text global-error">{errorMessage}</p>}
-	        {importingFile && (
+	        {importExportActions.importingFile && (
 	          <div className="upload-lock-overlay" role="alert" aria-live="assertive">
 	            <div className="upload-lock-card">
 	              <strong>파일 업로드 진행 중</strong>

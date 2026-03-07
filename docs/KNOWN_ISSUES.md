@@ -1,7 +1,18 @@
 # KNOWN ISSUES
 
-## 2026-03-05
-- 현재 없음 (초기 스캐폴딩 단계)
+## 2026-03-07 세션 사고
+
+- [open] `App.tsx` 편집 중 PowerShell 기반 텍스트 치환으로 파일 인코딩/문자열 손상 발생
+  - 영향: [`web/src/App.tsx`](/D:/linkpocket/linkpocket/web/src/App.tsx) 가 여러 차례 빌드 불가 상태로 깨졌고, 복구 후 재적용 작업이 반복됨
+  - 원인: `shell_command`로 `Get-Content -Raw` + 정규식 치환 + 재저장 흐름을 사용하면서 대형 TSX/한글/JSX 문자열이 손상됨
+  - 재발 방지: 대형 TSX 파일은 `apply_patch`만으로 수정하고, shell 기반 쓰기/범위 삭제를 금지
+  - 복구 원칙: 파일 손상 시 전체 revert 대신 해당 파일만 `git show HEAD:<path>` 기준으로 복구
+
+## 현재 오픈 이슈
+
+- [open] Cloudflare Pages 빌드 환경변수 고정 미완료 가능성
+  - 영향: 다음 배포에서 동일 백화면 이슈 재발 위험
+  - 권장: Pages 프로젝트 레벨 env를 즉시 고정 등록
 
 ## 재현 필요 이슈 (이전 버전 문서 기반, 사실 확정 전)
 - 새로고침 후 목록 0건 표시 가능성: 인증 초기화와 데이터 로드 타이밍 충돌 여부 재현 필요
@@ -21,7 +32,3 @@
   - 상태: 해결
   - 원인: 빌드 시 Supabase env 미주입으로 런타임 에러
   - 조치: env 주입 재빌드 + Pages 재배포
-
-- [open] Cloudflare Pages 빌드 환경변수 고정 미완료 가능성
-  - 영향: 다음 배포에서 동일 백화면 이슈 재발 위험
-  - 권장: Pages 프로젝트 레벨 env를 즉시 고정 등록

@@ -1,5 +1,66 @@
 # HISTORY
 
+## 2026-03-07 (`App.tsx` HEAD 복구 + `useImportExportActions` 호출 경로 재연결)
+- 변경 목적: 이전 세션 PowerShell 기반 편집 사고로 인코딩이 손상된 [`web/src/App.tsx`](/D:/linkpocket/linkpocket/web/src/App.tsx)를 `git checkout HEAD -- web/src/App.tsx`로 복구하고, `useImportExportActions` 훅을 호출 경로와 UI 상태 참조 기준으로 재연결
+- 복구 절차: `git checkout HEAD -- web/src/App.tsx` → 빌드 통과 확인 → Edit 도구(apply_patch 방식)로만 훅 연결
+- 연결 내용: import 추가, 훅 호출 추가(syncLinkTags 이후), beforeunload effect를 `importExportActions.importingFile` 기준으로 이동, file input onChange / 설정 버튼 3개 / upload overlay UI를 훅 경유로 전환
+- 검증: `npm --prefix web run build` 통과
+- 남은 작업: App.tsx 내 로컬 `importingFile` / `exportingFormat` 상태와 `handleImportArticlesFile` / `handleExportLinks` 함수 제거 (다음 단계, apply_patch만 사용)
+
+## 2026-03-07 (`App.tsx` 편집 사고와 운영 규칙 보강)
+- 변경 목적: 이번 세션에서 [`web/src/App.tsx`](/D:/linkpocket/linkpocket/web/src/App.tsx) 편집 중 PowerShell 기반 문자열 치환으로 파일이 반복 손상된 사고를 기록하고, 같은 유형의 재발을 막기 위한 운영 규칙을 문서에 반영
+- 사고 내용: `shell_command`로 대형 TSX 파일에 `Get-Content -Raw` + 정규식 치환 + 재저장을 적용하는 과정에서 UTF-8/한글/JSX 문자열이 무너져 여러 차례 빌드 불가 상태가 발생
+- 조치: [`docs/DECISIONS.md`](/D:/linkpocket/linkpocket/docs/DECISIONS.md), [`docs/KNOWN_ISSUES.md`](/D:/linkpocket/linkpocket/docs/KNOWN_ISSUES.md), [`docs/README.md`](/D:/linkpocket/linkpocket/docs/README.md)에 `apply_patch` 전용 편집 원칙, 파일 단위 복구 우선순위, 대형 범위 삭제 금지 규칙을 추가
+- 남은 상태: 현재 코드 작업은 중단하고 문서 기준을 먼저 고정했으며, 이후 복구/리팩터링은 작은 `apply_patch` 단위로만 재개해야 함
+
+## 2026-03-07 (`useImportExportActions` 실행 경로 연결)
+- 변경 목적: import/export 실행 경로를 [`web/src/App.tsx`](/D:/linkpocket/linkpocket/web/src/App.tsx)에서 [`web/src/hooks/useImportExportActions.ts`](/D:/linkpocket/linkpocket/web/src/hooks/useImportExportActions.ts)로 넘겨 가져오기/내보내기 상태와 I/O 책임을 분리
+- 사용자 체감 변화: 설정 화면의 파일 가져오기, JSONL/CSV 내보내기, 업로드 중 오버레이와 beforeunload 경고가 `useImportExportActions` 상태를 기준으로 동작
+- 작업 메모: 현재 단계에서는 안전하게 실행 경로만 훅으로 전환했고, 기존 `App.tsx` 내부 import/export 함수는 후속 정리 대상으로 남겨둠
+- 검증: `npm.cmd --prefix web run build` 통과
+
+## 2026-03-07 (`App.tsx` view split 1차 착수)
+- 변경 목적: 3,900줄 규모의 [`web/src/App.tsx`](/D:/linkpocket/linkpocket/web/src/App.tsx)에서 인증/라이브러리/설정 화면 경계를 먼저 세워, 다음 단계 query/action hook 분리를 위한 최소 구조를 확보
+- 사용자 체감 변화: 기능 변화는 없지만 인증 화면은 [`web/src/views/AuthView.tsx`](/D:/linkpocket/linkpocket/web/src/views/AuthView.tsx)로 분리되었고, 설정 화면은 [`web/src/views/SettingsView.tsx`](/D:/linkpocket/linkpocket/web/src/views/SettingsView.tsx)에서 실제 렌더되며, 라이브러리 화면도 [`web/src/views/LibraryView.tsx`](/D:/linkpocket/linkpocket/web/src/views/LibraryView.tsx) 기준으로 통계/툴바/목록 섹션 경계를 갖게 됨
+- 작업 메모: 이번 단계는 page-level split의 1차 착수로, `AuthView`와 `SettingsView`는 실제 JSX를 분리했고 `LibraryView`는 `statsSection / toolbarSection / linksSection` 구조를 기준으로 `App.tsx` 바깥 경계를 만들었다. 이어서 [`web/src/hooks/useAiPreferences.ts`](/D:/linkpocket/linkpocket/web/src/hooks/useAiPreferences.ts)를 추가해 AI 요약 설정의 상태/로드/저장/리셋 로직을 훅으로 분리했고, [`web/src/hooks/useCollectionsQuery.ts`](/D:/linkpocket/linkpocket/web/src/hooks/useCollectionsQuery.ts)로 컬렉션 조회/리셋 책임, [`web/src/hooks/useLinksQuery.ts`](/D:/linkpocket/linkpocket/web/src/hooks/useLinksQuery.ts)로 링크 목록/집계/카테고리 카운트/재조회 책임, [`web/src/hooks/useAiActions.ts`](/D:/linkpocket/linkpocket/web/src/hooks/useAiActions.ts)로 단건/배경/일괄 AI 실행 책임, [`web/src/hooks/useLinkMutations.ts`](/D:/linkpocket/linkpocket/web/src/hooks/useLinkMutations.ts)로 상세 autosave/읽음 전환/즐겨찾기/삭제 복원 관련 mutation 책임, [`web/src/hooks/useBulkActions.ts`](/D:/linkpocket/linkpocket/web/src/hooks/useBulkActions.ts)로 다중선택 상태와 일괄 상태 변경/삭제/복원/영구삭제 책임을 분리했다. 빌드는 `npm.cmd run build` 기준 통과 확인
+- 남은 리스크/다음 작업: import/export와 링크 추가 모달 저장 흐름은 아직 [`web/src/App.tsx`](/D:/linkpocket/linkpocket/web/src/App.tsx)에 집중되어 있으므로, 다음 단계에서 `useImportExportActions`와 생성 흐름 mutation 분리로 넘어가야 함
+
+## 2026-03-07 (활성 docs 최신성 재검수)
+- 변경 목적: 다음 세션 인수 직전에 `docs` 전체를 다시 점검한 결과, 일부 문서에 초기 버전 표현/오래된 상태 요약/이미 완료된 리팩터링 단계가 남아 있어 현재 기준으로 보정
+- 사용자 체감 변화: `docs/SETUP_KO.md`는 로컬 env 준비 절차까지 포함한 실제 실행 가이드가 되었고, `docs/KNOWN_ISSUES.md`는 현재 오픈 이슈가 먼저 보이며, `docs/EXECUTION_REFACTOR_PLAN.md`는 이미 끝난 `api.ts` 추출 이후 단계부터 바로 이어질 수 있게 정리됨
+- 남은 리스크/다음 작업: 문서와 코드가 다시 어긋나지 않도록, 이후 구조 분리 작업이 진행되면 `docs/NEXT_TASKS.md`와 `docs/EXECUTION_REFACTOR_PLAN.md`를 같이 갱신해야 함
+
+## 2026-03-07 (NEXT_TASKS를 최신 구조 분리 기준으로 재정렬)
+- 변경 목적: 기존 `NEXT_TASKS`에 운영 TODO와 예전 구조 분리 맥락이 섞여 있어, 최신 `origin/main` 기준 리팩터링 우선순위를 바로 읽기 어렵던 문제를 정리
+- 사용자 체감 변화: 이제 `docs/NEXT_TASKS.md`를 열면 현재 단계, 지금 바로 진행할 구조 분리, 이후 hook/컴포넌트 분리, 별도 운영 후속 작업이 분리되어 보여 다음 액션 판단이 쉬워짐
+- 남은 리스크/다음 작업: 체크박스는 실제 코드 반영 기준으로만 갱신해야 하며, 예전 stash 초안 기준으로 완료 처리하면 다시 문서와 코드가 어긋날 수 있음
+
+## 2026-03-07 (README를 세션 재개용 부트스트랩 문서로 강화)
+- 변경 목적: 사용자가 다른 세션에서 항상 `docs/README.md`부터 읽도록 운영하므로, 단순 인덱스가 아니라 현재 상태/다음 작업/주의사항까지 한 번에 전달하는 부트스트랩 문서로 보강
+- 사용자 체감 변화: 다음 세션 AI는 `docs/README.md`만 먼저 읽어도 현재 브랜치 상태, 문서 읽는 순서, stash 존재, 바로 다음 리팩터링 작업을 빠르게 파악할 수 있음
+- 추가 조정: `바로 다음 작업`처럼 금방 낡는 표현은 줄이고, `현재 단계`와 `우선 작업 축` 중심으로 바꿔 세션이 여러 번 지나도 범용성을 유지하도록 수정
+- 남은 리스크/다음 작업: README는 입구 문서일 뿐 세부 설계까지 대체하지는 못하므로, 실제 작업 전에는 `DECISIONS.md`, `NEXT_TASKS.md`, `EXECUTION_REFACTOR_PLAN.md`, `HISTORY.md`를 계속 함께 확인해야 함
+
+## 2026-03-07 (문서 루트 정리: 모든 문서를 docs로 이동)
+- 변경 목적: 루트와 `docs/`에 문서가 섞여 있어 현재 기준 문서를 찾기 어려웠으므로, 문서 파일을 `docs/` 아래로 일원화하고 구버전/참고 문서는 `docs/ARCHIVE/`로 이동
+- 사용자 체감 변화: 이제 문서는 `docs/README.md`만 보면 구조를 파악할 수 있고, 루트 디렉터리는 코드 중심으로 더 단순해짐
+- 작업 메모: `README.md`, `DECISIONS.md`, `KNOWN_ISSUES.md`, `NEXT_TASKS.md`, `HISTORY.md`는 `docs/`로 이동했고, `PROJECT_CONTEXT.md` 등 중복 참고 문서는 `docs/ARCHIVE/`로 정리
+- 남은 리스크/다음 작업: 기존 문서 참조 경로가 루트 기준으로 남아 있는 부분이 있으면 후속 작업 중 `docs/` 기준으로 같이 정리 필요
+
+## 2026-03-07 (최신 origin/main 기준 실행 설계 재잠금)
+- 변경 목적: 로컬이 뒤처진 상태에서 최신 GitHub UI를 반영한 결과, 기존 분리 계획이 더 이상 현재 `App.tsx` 규모와 책임에 맞지 않아 최신 구조 기준 실행 설계를 다시 정의
+- 사용자 체감 변화: 앞으로의 리팩터링은 오래된 MVP 기준이 아니라, 현재 실제 화면(`auth / library / settings / AI settings / bulk / import-export`)을 유지한 채 분리하는 방향으로 진행됨
+- 작업 메모: 새 기준 문서는 `docs/EXECUTION_REFACTOR_PLAN.md`이며, 우선순위를 `공통 API 추출 -> view split -> query/action hook split` 순으로 잠금
+- 남은 리스크/다음 작업: 예전 stash 초안을 그대로 적용하면 최신 UI와 충돌할 가능성이 높으므로, 최신 코드 기준으로 필요한 로직만 선별 재적용해야 함
+
+## 2026-03-07 (로컬 워크스페이스 지연 동기화 확인 및 최신 origin/main 반영)
+- 변경 목적: 로컬 개발 서버에서 구버전 UI가 뜨는 현상을 확인한 결과, 현재 워크스페이스가 GitHub `origin/main`보다 39커밋 뒤처져 있었음을 확인하고 최신 상태로 fast-forward 동기화
+- 사용자 체감 변화: 이제 로컬 코드는 GitHub 최신 UI/기능 기준과 다시 맞춰져, 브라우저에서 보는 화면이 배포/원격 기준과 더 일치함
+- 작업 메모: 동기화 전 진행 중이던 로컬 변경은 `git stash`로 임시 보관했으며, 현재 stash는 아래 2개가 남아 있음
+  - `stash@{0}`: `wip after stopping dev server before syncing latest origin/main on 2026-03-07`
+  - `stash@{1}`: `wip before syncing latest origin/main on 2026-03-07`
+- 남은 리스크/다음 작업: stash 안에는 문서 재구성 및 `App.tsx` 분리 작업 초안이 섞여 있으므로, 최신 UI 구조를 먼저 확인한 뒤 필요한 변경만 선별 적용하는 편이 안전함
+
 ## 2026-03-06 (마감 정리: 지침 요약 + 작업목록 슬림화 + 배포 프로브 제거)
 - 변경 목적: 누적된 운영 지침/할 일 목록을 읽기 쉬운 수준으로 압축하고, 배포 점검용 임시 마커를 정리해 문서/파일 상태를 깔끔하게 마감
 - 사용자 체감 변화: `README.md`의 소통 지침이 중복 없이 요약되어 다음 세션 인수 시간이 줄고, `NEXT_TASKS.md`가 미완료 항목 중심으로 정리되어 우선순위 파악이 쉬워짐. `web/index.html`의 `deploy-probe` 메타가 제거되어 프로덕션 헤더가 정리됨

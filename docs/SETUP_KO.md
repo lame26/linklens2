@@ -1,4 +1,4 @@
-# LinkPocket 생성/연결 가이드 (초기 버전)
+# LinkPocket 생성/연결 가이드
 
 ## 1) Supabase 프로젝트 생성
 1. Supabase 대시보드에서 새 프로젝트 생성
@@ -56,16 +56,29 @@ npm --prefix api run deploy
    - `VITE_API_BASE_URL` (예: `https://linkpocket-api.<account>.workers.dev`)
 
 ## 5) 로컬 실행
-1. 웹
+1. 웹 env 파일 준비
+```bash
+cp web/.env.example web/.env.local
+```
+2. `web/.env.local`에 아래 값 입력
+   - `VITE_SUPABASE_URL`
+   - `VITE_SUPABASE_ANON_KEY`
+   - `VITE_API_BASE_URL`
+3. 웹 실행
 ```bash
 npm --prefix web install
 npm --prefix web run dev
 ```
-2. API
+4. API 실행
 ```bash
 npm --prefix api install
 npm --prefix api run dev
 ```
+
+### 로컬 실행 체크 포인트
+- `web/.env.local`이 없으면 프론트는 `VITE_SUPABASE_URL 또는 VITE_SUPABASE_ANON_KEY가 설정되지 않았습니다.` 오류로 즉시 중단된다.
+- `VITE_API_BASE_URL`이 placeholder면 저장/AI 동작에서 `Failed to fetch`가 발생한다.
+- env를 수정한 뒤에는 Vite dev 서버를 재시작해야 반영된다.
 
 ## 6) MVP 검증 체크
 1. 이메일 회원가입/로그인/로그아웃
