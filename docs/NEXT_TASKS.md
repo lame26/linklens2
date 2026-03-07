@@ -4,7 +4,7 @@
 
 - [x] `App.tsx` 손상 상태를 먼저 `HEAD` 기준으로 복구
 - [x] import/export 호출 경로와 UI 상태 참조를 훅으로 연결 (빌드 통과)
-- [ ] App.tsx 내 로컬 `importingFile` / `exportingFormat` 상태 및 `handleImportArticlesFile` / `handleExportLinks` 함수 제거 (apply_patch만 사용)
+- [x] App.tsx 내 로컬 `importingFile` / `exportingFormat` 상태 및 `handleImportArticlesFile` / `handleExportLinks` 함수 제거 (apply_patch만 사용)
 
 완료 항목 상세 이력은 `docs/HISTORY.md`를 기준으로 확인한다.
 
@@ -59,3 +59,8 @@
 - [ ] 스켈레톤 로딩 카드 추가
 - [ ] 저장 -> AI 자동분석 E2E 체크리스트 문서화
 - [ ] 인증/저장 실패 네트워크 로그 템플릿(401/CORS/500) 추가
+- [ ] 저장 CTA를 `즉시 저장 + AI 후처리`로 명확히 보이게 수정
+- [ ] 저장 상태와 AI 상태 피드백 분리 (`저장 완료`, `AI 분석 중`, `AI 실패`, `재시도`)
+- [ ] 라이브러리 메인 화면을 숫자 카드 중심에서 재탐색 중심으로 재설계
+- [ ] 별점 기능 유지 여부 재검토
+- [ ] autosave / 삭제 / 복원 / import-export / 세션 만료 신뢰 UX 보강
